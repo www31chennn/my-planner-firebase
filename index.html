@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="計畫本" />
+  <title>計畫本</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="/commons.js" type="text/babel"></script>
+  <script src="/planner.js" type="text/babel"></script>
+  <script src="/subscriptions.js" type="text/babel"></script>
+  <script src="/weight.js" type="text/babel"></script>
+  <script src="/budget.js" type="text/babel"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body, #root { height: 100%; }
+    body { background: #F7F5F2; overscroll-behavior: none; font-family: 'Noto Sans TC', sans-serif; }
+    input, textarea, button, select { font-family: inherit; }
+    ::-webkit-scrollbar { display: none; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes popIn { from { opacity:0; transform:scale(0.88); } to { opacity:1; transform:scale(1); } }
+    .fade-up { animation: fadeUp 0.3s ease forwards; }
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+    .pop-in { animation: popIn 0.18s ease forwards; }
+    .menu-overlay { position:fixed; inset:0; z-index:200; display:flex; }
+    .menu-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.3); }
+    .menu-panel { position:relative; width:260px; background:#fff; height:100%; display:flex; flex-direction:column; box-shadow:4px 0 20px rgba(0,0,0,0.1); animation:slideIn 0.25s ease; }
+    @keyframes slideIn { from { transform:translateX(-100%); } to { transform:translateX(0); } }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const MODULES = [
+  { id:"planner", label:"計畫本", emoji:"📓", component: PlannerApp },
+  { id:"subscriptions", label:"訂閱管理", emoji:"💳", component: SubscriptionsApp },
+  { id:"weight", label:"體重記錄", emoji:"⚖️", component: WeightApp },
+  { id:"budget", label:"記帳", emoji:"💰", component: BudgetApp },
+];
+
+function CoverPage({ onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [step, setStep] = useState("login");
+  const [pendingCreds, setPendingCreds] = useState(null);
+
+  async function handleEnter() {
+    if (!username.trim()||!password.trim()) { setError("請填寫帳號和密碼"); return; }
+    setLoading(true); setError("");
+    // 密碼直接透過 POST body 傳輸，server 端用 PBKDF2 處理
+    const res = await apiCall({ action:"auth", user:username.trim(), password:password.trim(), displayName:"__check__" });
+    setLoading(false);
+    if (!res) { setError("連線失敗，請稍後再試"); return; }
+    if (res.isNew) {
+      setPendingCreds({ user:username.trim(), token:res.token });
+      setDisplayName(username.trim());
+      setStep("nickname");
+    } else if (res.ok===false) {
+      setError(res.error||"帳號或密碼錯誤");
+    } else {
+      onLogin(username.trim(), res.token, res.displayName||username.trim());
+    }
+  }
+
+  async function handleSetNickname() {
+    if (!displayName.trim()) { setError("請輸入暱稱"); return; }
+    setLoading(true); setError("");
+    const res = await apiCall({ action:"updateName", user:pendingCreds.user, token:pendingCreds.token, displayName:displayName.trim() });
+    setLoading(false);
+    if (res&&res.ok) { onLogin(pendingCreds.user, pendingCreds.token, displayName.trim()); }
+    else { setError("建立失敗，請稍後再試"); }
+  }
+
+  const inp = { width:"100%", border:`1.5px solid ${C.border}`, borderRadius:12, padding:"13px 16px", fontSize:15, color:C.text, background:C.card, outline:"none" };
+
+  return (
+    <div className="fade-in" style={{ height:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, padding:"0 32px" }}>
+      <div style={{ width:"100%", maxWidth:360 }}>
+        <div style={{ textAlign:"center", marginBottom:48 }}>
+          <div style={{ fontSize:48, marginBottom:12 }}>📓</div>
+          <div style={{ fontSize:28, fontFamily:"'Noto Serif TC',serif", fontWeight:700, color:C.text }}>計畫本</div>
+          <div style={{ fontSize:13, color:C.sub, marginTop:6 }}>記錄你的每一天</div>
+        </div>
+        {step==="login" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            <div><div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>帳號</div>
+              <input value={username} onChange={e=>setUsername(e.target.value)} placeholder="輸入帳號" onKeyDown={e=>e.key==="Enter"&&handleEnter()} style={inp} /></div>
+            <div><div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>密碼</div>
+              <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="輸入密碼" onKeyDown={e=>e.key==="Enter"&&handleEnter()} style={inp} /></div>
+            {error && <div style={{ fontSize:13, color:C.red, textAlign:"center" }}>{error}</div>}
+            <button onClick={handleEnter} disabled={loading} style={{ width:"100%", padding:"14px 0", borderRadius:12, border:"none", background:C.accent, color:"#fff", fontSize:16, fontWeight:600, cursor:"pointer", opacity:loading?0.7:1 }}>
+              {loading?"連線中…":"進入"}</button>
+            <div style={{ fontSize:12, color:C.sub, textAlign:"center" }}>第一次使用會自動建立帳號</div>
+          </div>
+        )}
+        {step==="nickname" && (
+          <div className="fade-in" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            <div style={{ background:C.accentLight, borderRadius:12, padding:"14px 16px", fontSize:14, color:C.accent }}>👋 帳號建立成功！請設定你的暱稱</div>
+            <div><div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>你的暱稱</div>
+              <input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="例如：小美、阿明…" onKeyDown={e=>e.key==="Enter"&&handleSetNickname()} style={inp} /></div>
+            {error && <div style={{ fontSize:13, color:C.red, textAlign:"center" }}>{error}</div>}
+            <button onClick={handleSetNickname} disabled={loading} style={{ width:"100%", padding:"14px 0", borderRadius:12, border:"none", background:C.accent, color:"#fff", fontSize:16, fontWeight:600, cursor:"pointer", opacity:loading?0.7:1 }}>
+              {loading?"建立中…":"開始使用"}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HamburgerMenu({ user, displayName, currentModule, onSwitch, onSettings, onLogout, onClose }) {
+  return (
+    <div className="menu-overlay">
+      <div className="menu-backdrop" onClick={onClose} />
+      <div className="menu-panel">
+        <div style={{ padding:"52px 20px 20px", borderBottom:`1px solid ${C.border}` }}>
+          <div style={{ fontSize:28, marginBottom:8 }}>👤</div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.text }}>{displayName}</div>
+          <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>{user}</div>
+        </div>
+        <div style={{ flex:1, padding:"12px 0", overflowY:"auto" }}>
+          <div style={{ fontSize:11, color:C.sub, padding:"8px 20px 4px", letterSpacing:1 }}>模組</div>
+          {MODULES.map(m => (
+            <button key={m.id} onClick={()=>{ onSwitch(m.id); onClose(); }}
+              style={{ width:"100%", display:"flex", alignItems:"center", gap:12, padding:"13px 20px", background:currentModule===m.id?C.accentLight:"none", border:"none", cursor:"pointer", textAlign:"left", borderLeft:currentModule===m.id?`3px solid ${C.accent}`:"3px solid transparent" }}>
+              <span style={{ fontSize:20 }}>{m.emoji}</span>
+              <span style={{ fontSize:15, fontWeight:currentModule===m.id?600:400, color:currentModule===m.id?C.accent:C.text }}>{m.label}</span>
+            </button>
+          ))}
+        </div>
+        <div style={{ padding:"12px 20px 40px", borderTop:`1px solid ${C.border}`, display:"flex", flexDirection:"column", gap:8 }}>
+          <button onClick={()=>{ onSettings(); onClose(); }}
+            style={{ width:"100%", padding:"11px 0", borderRadius:10, border:`1.5px solid ${C.border}`, background:"none", color:C.text, fontSize:14, cursor:"pointer" }}>
+            ⚙️ 設定
+          </button>
+          <button onClick={onLogout}
+            style={{ width:"100%", padding:"11px 0", borderRadius:10, border:`1.5px solid ${C.red}`, background:"none", color:C.red, fontSize:14, cursor:"pointer" }}>
+            登出
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNicknameUpdate, onPartnerChange }) {
+  const [name, setName] = useState(plannerName);
+  const [nickname, setNickname] = useState("");
+  const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // 記帳夥伴
+  const [partner, setPartner] = useState(window._CACHE?.[`${user}:budget_partner:partner`] || "");
+  const [partnerInput, setPartnerInput] = useState("");
+  const [partnerMsg, setPartnerMsg] = useState("");
+  const [partnerSaving, setPartnerSaving] = useState(false);
+
+  async function savePlannerName() {
+    const val = name.trim()||"計畫本";
+    setPlannerName(val);
+    localStorage.setItem("plannerName_"+user, val);
+    await apiCall({ action:"saveSetting", user, token, value:val });
+    setMsg("已儲存！"); setTimeout(()=>setMsg(""), 2000);
+  }
+
+  async function saveNickname() {
+    if (!nickname.trim()) return;
+    setSaving(true);
+    const res = await apiCall({action:"updateName", user, token, displayName:nickname.trim()});
+    setSaving(false);
+    if (res&&res.ok) {
+      setMsg("暱稱已更新！");
+      onNicknameUpdate && onNicknameUpdate(nickname.trim());
+      setTimeout(()=>setMsg(""), 2000);
+    } else setMsg("更新失敗");
+  }
+
+  async function setPartnerAction() {
+    if (!partnerInput.trim()) return;
+    setPartnerSaving(true); setPartnerMsg("");
+    const res = await apiCall({ action:"setPartner", user, token, partnerUser:partnerInput.trim() });
+    setPartnerSaving(false);
+    if (res?.ok) {
+      window._SHARED_TOKEN = res.sharedToken;
+      window._CACHE = window._CACHE || {};
+      window._CACHE[`${user}:budget_partner:partner`] = res.partner;
+      setPartner(res.partner);
+      setPartnerInput("");
+      setPartnerMsg("✅ 已成功建立記帳夥伴關係！");
+      onPartnerChange && onPartnerChange(res.partner);
+    } else {
+      setPartnerMsg("❌ " + (res?.error || "設定失敗"));
+    }
+  }
+
+  async function removePartnerAction() {
+    if (!window.confirm(`確定要解除與 ${partner} 的記帳夥伴關係嗎？`)) return;
+    setPartnerSaving(true); setPartnerMsg("");
+    const res = await apiCall({ action:"removePartner", user, token });
+    setPartnerSaving(false);
+    if (res?.ok) {
+      window._SHARED_TOKEN = "";
+      window._CACHE = window._CACHE || {};
+      window._CACHE[`${user}:budget_partner:partner`] = "";
+      setPartner("");
+      setPartnerMsg("已解除夥伴關係");
+      onPartnerChange && onPartnerChange("");
+    } else {
+      setPartnerMsg("❌ 解除失敗");
+    }
+  }
+
+  const inp = { flex:1, border:`1.5px solid ${C.border}`, borderRadius:10, padding:"9px 10px", fontSize:14, color:C.text, background:C.bg, outline:"none", minWidth:0 };
+  const btn = { background:C.accent, color:"#fff", border:"none", borderRadius:10, padding:"9px 12px", cursor:"pointer", fontSize:13, fontWeight:600, flexShrink:0 };
+
+  return (
+    <div className="fade-in" style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.3)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
+      <div style={{ width:"100%", maxWidth:430, margin:"0 auto", background:C.card, borderRadius:"20px 20px 0 0", padding:"24px 20px 48px", maxHeight:"80vh", overflowY:"auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
+          <div style={{ fontSize:18, fontWeight:700, color:C.text }}>設定</div>
+          <button onClick={onClose} style={{ background:C.border, border:"none", borderRadius:10, width:32, height:32, cursor:"pointer", fontSize:16 }}>✕</button>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+          {/* 計畫本名稱 */}
+          <div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:7 }}>計畫本名稱</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <input value={name} onChange={e=>setName(e.target.value)} style={inp} />
+              <button onClick={savePlannerName} style={btn}>儲存</button>
+            </div>
+          </div>
+
+          {/* 暱稱 */}
+          <div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:7 }}>更新暱稱</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <input value={nickname} onChange={e=>setNickname(e.target.value)} placeholder="輸入新暱稱" style={inp} />
+              <button onClick={saveNickname} disabled={saving} style={{ ...btn, opacity:saving?0.7:1 }}>更新</button>
+            </div>
+          </div>
+
+          {msg && <div style={{ fontSize:13, color:C.accent, textAlign:"center" }}>{msg}</div>}
+
+          {/* 分隔線 */}
+          <div style={{ height:1, background:C.border }} />
+
+          {/* 記帳夥伴 */}
+          <div>
+            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:10 }}>💰 記帳夥伴</div>
+            {partner ? (
+              <div>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:C.accentLight, borderRadius:10, padding:"10px 14px", marginBottom:8 }}>
+                  <div>
+                    <div style={{ fontSize:12, color:C.sub }}>目前夥伴</div>
+                    <div style={{ fontSize:15, fontWeight:600, color:C.accent }}>{partner}</div>
+                  </div>
+                  <button onClick={removePartnerAction} disabled={partnerSaving}
+                    style={{ background:"none", border:`1px solid ${C.red}`, color:C.red, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:12, opacity:partnerSaving?0.7:1 }}>
+                    解除關係
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize:12, color:C.sub, marginBottom:7 }}>輸入夥伴的帳號名稱</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <input value={partnerInput} onChange={e=>setPartnerInput(e.target.value)}
+                    placeholder="夥伴帳號" style={inp} />
+                  <button onClick={setPartnerAction} disabled={partnerSaving}
+                    style={{ ...btn, opacity:partnerSaving?0.7:1 }}>
+                    {partnerSaving ? "設定中" : "設定"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {partnerMsg && <div style={{ fontSize:13, marginTop:8, color: partnerMsg.startsWith("❌") ? C.red : C.accent }}>{partnerMsg}</div>}
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MainShell({ user, token, displayName: displayName_prop }) {
+  const thisYear = new Date().getFullYear();
+  const [currentModule, setCurrentModule] = useState("planner");
+  const [saving, setSaving] = useState({goals:false, month:false, daily:false});
+  const [showMenu, setShowMenu] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [plannerName, setPlannerName] = useState(localStorage.getItem("plannerName_"+user)||"計畫本");
+  // 用 partnerVersion 讓 BudgetApp 知道夥伴關係有變，強制重新讀取
+  const [partnerVersion, setPartnerVersion] = useState(0);
+
+  // 從 _users 第四欄載入計畫本名稱
+  useEffect(()=>{
+    apiCall({ action:"getSetting", user, token }).then(val => {
+      if (val && String(val).trim() && String(val) !== "null") {
+        const name = String(val).trim();
+        setPlannerName(name);
+        localStorage.setItem("plannerName_"+user, name);
+      }
+    });
+  },[]);
+  const [appLoading, setAppLoading] = useState(true);
+  const [displayName, setDisplayName] = useState(displayName_prop);
+  const shellTouchStart = useRef(null);
+
+  function handleShellTouchStart(e) {
+    shellTouchStart.current = e.touches[0].clientX;
+  }
+  function handleShellTouchEnd(e) {
+    if (shellTouchStart.current === null) return;
+    const diff = shellTouchStart.current - e.changedTouches[0].clientX;
+    // 從左邊滑出（往右滑）且起點在左側 80px 內 → 開漢堡選單
+    if (diff < -60 && shellTouchStart.current < 80) {
+      setShowMenu(true);
+    }
+    shellTouchStart.current = null;
+  }
+
+  useEffect(()=>{
+    (async () => {
+    const now = new Date();
+    const nowMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+    // 只預載 budgetPartner 和 sharedToken，讓 budget.js 可以讀到
+    // 其他資料改為各模組按需載入
+    const [partnerVal, sharedTokenVal] = await Promise.all([
+      apiCall({ action:"getBudgetPartner", user, token }),
+      apiCall({ action:"getSharedToken", user, token }),
+    ]);
+    const partner = (partnerVal && String(partnerVal).trim() && String(partnerVal) !== "null") ? String(partnerVal).trim() : "";
+    const sharedToken = (sharedTokenVal && String(sharedTokenVal).trim() && String(sharedTokenVal) !== "null") ? String(sharedTokenVal).trim() : "";
+    window._CACHE = window._CACHE || {};
+    window._CACHE[`${user}:budget_partner:partner`] = partner;
+    window._SHARED_TOKEN = sharedToken;
+    window._API_USER = user;  // 供 _shared 請求驗證用
+
+    // 預載 partner 的記帳（有夥伴且有 sharedToken 才需要）
+    if (partner && sharedToken) {
+      apiCall({ action:"readOne", user:"_shared", sheet:"budget", key:`${partner}_${nowMonth}`, sharedToken })
+        .then(val => {
+          window._CACHE[`_shared:budget:${partner}_${nowMonth}`] = typeof val==="string" ? val : JSON.stringify(val||[]);
+        });
+    }
+    setAppLoading(false);
+    })();
+  },[]);
+
+  function handleLogout() {
+    // 通知 server 刪除 token
+    apiCall({ action:"logout", user, token });
+    localStorage.removeItem("session");
+    window.location.reload();
+  }
+
+  if (appLoading) return (
+    <div style={{ height:"100vh", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16, background:C.bg }}>
+      <div style={{ width:36, height:36, borderRadius:18, border:`3px solid ${C.border}`, borderTopColor:C.accent, animation:"spin 0.8s linear infinite" }} />
+      <div style={{ color:C.sub, fontSize:14 }}>載入 {displayName} 的資料…</div>
+    </div>
+  );
+
+  const ActiveModule = MODULES.find(m => m.id === currentModule)?.component;
+
+  return (
+    <div style={{ height:"100vh", display:"flex", flexDirection:"column", background:C.bg, maxWidth:430, margin:"0 auto", position:"relative", overflow:"hidden" }}
+      onTouchStart={handleShellTouchStart} onTouchEnd={handleShellTouchEnd}>
+      <div style={{ padding:"48px 20px 12px", background:C.bg, flexShrink:0, borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:12 }}>
+        <button onClick={()=>setShowMenu(true)}
+          style={{ background:"none", border:"none", cursor:"pointer", padding:4, display:"flex", flexDirection:"column", gap:4, flexShrink:0 }}>
+          <div style={{ width:20, height:2, background:C.text, borderRadius:1 }} />
+          <div style={{ width:20, height:2, background:C.text, borderRadius:1 }} />
+          <div style={{ width:20, height:2, background:C.text, borderRadius:1 }} />
+        </button>
+        <div style={{ flex:1, fontSize:16, fontFamily:"'Noto Serif TC',serif", fontWeight:700, color:C.text }}>
+          {MODULES.find(m=>m.id===currentModule)?.emoji} {MODULES.find(m=>m.id===currentModule)?.label}
+        </div>
+        <div style={{ fontSize:12, color:C.sub }}>{displayName}</div>
+      </div>
+
+      <div style={{ flex:1, overflow:"hidden", position:"relative" }}>
+        {MODULES.map(m => (
+          <div key={m.id} style={{ position:"absolute", inset:0, visibility:currentModule===m.id?"visible":"hidden", pointerEvents:currentModule===m.id?"auto":"none" }}>
+            <m.component
+              user={user}
+              token={token}
+              displayName={displayName}
+              saving={saving}
+              setSaving={setSaving}
+              plannerName={plannerName}
+              onOpenSettings={()=>setShowSettings(true)}
+              partnerVersion={partnerVersion}
+            />
+          </div>
+        ))}
+      </div>
+
+      {showMenu && (
+        <HamburgerMenu
+          user={user}
+          displayName={displayName}
+          currentModule={currentModule}
+          onSwitch={setCurrentModule}
+          onSettings={()=>setShowSettings(true)}
+          onLogout={handleLogout}
+          onClose={()=>setShowMenu(false)}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsModal
+          user={user}
+          token={token}
+          plannerName={plannerName}
+          setPlannerName={setPlannerName}
+          onClose={()=>setShowSettings(false)}
+          onNicknameUpdate={newName => {
+            const s = JSON.parse(localStorage.getItem("session"));
+            s.displayName = newName;
+            localStorage.setItem("session", JSON.stringify(s));
+            setDisplayName(newName);
+          }}
+          onPartnerChange={newPartner => {
+            // 更新全域狀態
+            window._CACHE = window._CACHE || {};
+            window._CACHE[`${user}:budget_partner:partner`] = newPartner;
+            if (!newPartner) window._SHARED_TOKEN = "";
+            // 清掉所有 _shared:budget 快取，強制 BudgetApp 重新讀取
+            Object.keys(window._CACHE).forEach(k => {
+              if (k.startsWith("_shared:budget:")) delete window._CACHE[k];
+            });
+            // 遞增 version，BudgetApp 的 useEffect 會重新執行
+            setPartnerVersion(v => v + 1);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function Root() {
+  const [session, setSession] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem("session")); } catch { return null; }
+  });
+  function handleLogin(user, token, displayName) {
+    const s = {user, token, displayName};
+    localStorage.setItem("session", JSON.stringify(s));
+    setSession(s);
+  }
+  if (!session) return <CoverPage onLogin={handleLogin} />;
+  return <MainShell user={session.user} token={session.token} displayName={session.displayName} />;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+</script>
+</body>
+</html>
