@@ -191,11 +191,14 @@ function BudgetApp({ user, token, saving, setSaving, displayName, partnerVersion
   // 載入記帳資料（永遠從 _shared_budget 讀）
   useEffect(()=>{
     if (partner === undefined) return;
-    console.log("[budget] useEffect 觸發, partner:", JSON.stringify(partner), "partnerVersion:", partnerVersion, "myKey:", myKey);
+
+    // 解除夥伴後強制清空夥伴資料
+    if (partner === "") {
+      setPartnerRecords([]);
+    }
 
     const cachedMy = cacheHas("_shared", SHEET, myKey) ? cacheGet("_shared", SHEET, myKey) : null;
     const cachedPartner = partnerKey && cacheHas("_shared", SHEET, partnerKey) ? cacheGet("_shared", SHEET, partnerKey) : null;
-    console.log("[budget] cachedMy:", cachedMy ? "有快取" : "無快取", "sharedToken:", window._SHARED_TOKEN||"(空)", "token:", token ? "有" : "無");
 
     if (cachedMy !== null && (!partnerKey || cachedPartner !== null)) {
       try { setMyRecords(cachedMy ? (Array.isArray(JSON.parse(cachedMy)) ? JSON.parse(cachedMy) : []) : []); } catch { setMyRecords([]); }
@@ -214,7 +217,6 @@ function BudgetApp({ user, token, saving, setSaving, displayName, partnerVersion
         ? apiCall({ ...sharedParams(), action:"readOne", key:partnerKey })
         : Promise.resolve(cachedPartner),
     ]).then(([myVal, partnerVal]) => {
-      console.log("[budget] API 回傳 myVal:", myVal, "partnerVal:", partnerVal);
       if (cachedMy === null) {
         const str = typeof myVal === "string" ? myVal : JSON.stringify(myVal||[]);
         cacheSet("_shared", SHEET, myKey, str);
