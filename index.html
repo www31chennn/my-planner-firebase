@@ -159,9 +159,9 @@ function HamburgerMenu({ user, token, displayName, currentModule, onSwitch, onSe
                 <input
                   value={customEmoji}
                   onChange={e=>setCustomEmoji(e.target.value)}
-                  placeholder="自訂…"
+                  placeholder="自訂"
                   maxLength={2}
-                  style={{ flex:1, border:`1.5px solid ${C.border}`, borderRadius:8, padding:"6px 8px", fontSize:customEmoji?22:14, outline:"none", background:C.card, textAlign:"center" }}
+                  style={{ width:60, border:`1.5px solid ${C.border}`, borderRadius:8, padding:"6px 8px", fontSize:customEmoji?22:14, outline:"none", background:C.card, textAlign:"center", flexShrink:0 }}
                 />
                 <button
                   onClick={()=>{ if(customEmoji.trim()) selectAvatar(customEmoji.trim()); }}
