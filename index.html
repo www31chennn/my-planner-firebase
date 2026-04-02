@@ -124,12 +124,14 @@ function CoverPage({ onLogin }) {
 function HamburgerMenu({ user, token, displayName, currentModule, onSwitch, onSettings, onLogout, onClose }) {
   const [avatar, setAvatar] = useState(()=> localStorage.getItem("avatar_"+user) || "👤");
   const [showPicker, setShowPicker] = useState(false);
+  const [customEmoji, setCustomEmoji] = useState("");
   const AVATAR_OPTIONS = ["👤","😊","😎","🥰","🤩","😇","🦊","🐼","🐨","🐸","🦁","🐯","🐻","🐙","🦋","🌸","🌟","🔥","💎","🎯","🎨","🎵","🚀","⚡","🌈"];
 
   async function selectAvatar(emoji) {
     setAvatar(emoji);
     localStorage.setItem("avatar_"+user, emoji);
     setShowPicker(false);
+    setCustomEmoji("");
     await apiCall({ action:"saveAvatar", user, token, value:emoji });
   }
 
@@ -144,13 +146,29 @@ function HamburgerMenu({ user, token, displayName, currentModule, onSwitch, onSe
             title="點擊更換頭像"
           >{avatar}</div>
           {showPicker && (
-            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10, background:C.bg, borderRadius:12, padding:10 }}>
-              {AVATAR_OPTIONS.map(e => (
-                <button key={e} onClick={()=>selectAvatar(e)}
-                  style={{ fontSize:24, background:avatar===e?C.accentLight:"none", border:avatar===e?`1.5px solid ${C.accent}`:"1.5px solid transparent", borderRadius:8, padding:4, cursor:"pointer", lineHeight:1 }}>
-                  {e}
+            <div style={{ background:C.bg, borderRadius:12, padding:10, marginBottom:8 }}>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
+                {AVATAR_OPTIONS.map(e => (
+                  <button key={e} onClick={()=>selectAvatar(e)}
+                    style={{ fontSize:24, background:avatar===e?C.accentLight:"none", border:avatar===e?`1.5px solid ${C.accent}`:"1.5px solid transparent", borderRadius:8, padding:4, cursor:"pointer", lineHeight:1 }}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <input
+                  value={customEmoji}
+                  onChange={e=>setCustomEmoji(e.target.value)}
+                  placeholder="自訂…"
+                  maxLength={2}
+                  style={{ flex:1, border:`1.5px solid ${C.border}`, borderRadius:8, padding:"6px 8px", fontSize:customEmoji?22:14, outline:"none", background:C.card, textAlign:"center" }}
+                />
+                <button
+                  onClick={()=>{ if(customEmoji.trim()) selectAvatar(customEmoji.trim()); }}
+                  style={{ background:C.accent, color:"#fff", border:"none", borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:13, fontWeight:600, flexShrink:0 }}>
+                  選
                 </button>
-              ))}
+              </div>
             </div>
           )}
           <div style={{ fontSize:16, fontWeight:700, color:C.text }}>{displayName}</div>
