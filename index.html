@@ -302,17 +302,23 @@ function MainShell({ user, token, displayName: displayName_prop }) {
   const [saving, setSaving] = useState({goals:false, month:false, daily:false});
   const [showMenu, setShowMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [plannerName, setPlannerName] = useState(localStorage.getItem("plannerName_"+user)||"計畫本");
+  const storedName = localStorage.getItem("plannerName_"+user);
+  const [plannerName, setPlannerName] = useState(
+    (storedName && storedName !== "[object Object]") ? storedName : "計畫本"
+  );
   // 用 partnerVersion 讓 BudgetApp 知道夥伴關係有變，強制重新讀取
   const [partnerVersion, setPartnerVersion] = useState(0);
 
   // 從 _users 第四欄載入計畫本名稱
   useEffect(()=>{
     apiCall({ action:"getSetting", user, token }).then(val => {
-      if (val && String(val).trim() && String(val) !== "null") {
+      if (val && String(val).trim() && String(val) !== "null" && String(val) !== "[object Object]") {
         const name = String(val).trim();
         setPlannerName(name);
         localStorage.setItem("plannerName_"+user, name);
+      } else {
+        // 清掉可能殘留的壞值
+        localStorage.removeItem("plannerName_"+user);
       }
     });
   },[]);
