@@ -164,14 +164,15 @@ function BudgetApp({ user, token, saving, setSaving, displayName, partnerVersion
     setRefreshKey(k => k + 1); // 強制 useEffect 重新執行
   }
 
-  // 夥伴關係改變時重新讀取（partnerVersion > 0 表示是使用者主動操作）
+  // 夥伴關係改變時重新讀取
   useEffect(() => {
     if (partnerVersion === 0) return;
     const newPartner = window._CACHE?.[`${user}:budget_partner:partner`] ?? "";
     setPartner(newPartner);
+    setPartnerRecords([]);  // 立刻清空夥伴資料
     setMyRecords([]);
-    setPartnerRecords([]);
     setLoaded(false);
+    setRefreshKey(k => k + 1);  // 觸發重新讀取
   }, [partnerVersion]);
 
   // 初始載入 partner
@@ -231,7 +232,7 @@ function BudgetApp({ user, token, saving, setSaving, displayName, partnerVersion
       }
       setLoaded(true);
     });
-  }, [viewMonth, partner, refreshKey, partnerVersion]);
+  }, [viewMonth, partner, refreshKey]);
 
   function save(next) {
     setMyRecords(next);
