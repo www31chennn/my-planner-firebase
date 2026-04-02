@@ -215,6 +215,18 @@ async function handleAction(p) {
     return { ok: true };
   }
 
+  if (action === "getAvatar") {
+    if (!await verifyToken()) return null;
+    const doc = await db.collection("_users").doc(user).get();
+    return doc.exists ? (doc.data().avatar || "👤") : "👤";
+  }
+
+  if (action === "saveAvatar") {
+    if (!await verifyToken()) return { ok: false };
+    await db.collection("_users").doc(user).update({ avatar: value || "👤" });
+    return { ok: true };
+  }
+
   if (action === "getBudgetPartner") {
     if (!await verifyToken()) return null;
     const doc = await db.collection("_users").doc(user).get();
@@ -328,3 +340,4 @@ async function handleAction(p) {
 
   return { error: "unknown action" };
 }
+

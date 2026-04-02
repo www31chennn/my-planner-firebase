@@ -216,6 +216,20 @@ async function handleAction(p) {
     return { ok: true };
   }
 
+  // ── getAvatar ─────────────────────────────────────────
+  if (action === "getAvatar") {
+    if (!await verifyToken()) return null;
+    const doc = await db.collection("_users").doc(user).get();
+    return doc.exists ? (doc.data().avatar || "👤") : "👤";
+  }
+
+  // ── saveAvatar ────────────────────────────────────────
+  if (action === "saveAvatar") {
+    if (!await verifyToken()) return { ok: false };
+    await db.collection("_users").doc(user).update({ avatar: value || "👤" });
+    return { ok: true };
+  }
+
   // ── getBudgetPartner ──────────────────────────────────
   if (action === "getBudgetPartner") {
     if (!await verifyToken()) return null;

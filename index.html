@@ -121,13 +121,38 @@ function CoverPage({ onLogin }) {
   );
 }
 
-function HamburgerMenu({ user, displayName, currentModule, onSwitch, onSettings, onLogout, onClose }) {
+function HamburgerMenu({ user, token, displayName, currentModule, onSwitch, onSettings, onLogout, onClose }) {
+  const [avatar, setAvatar] = useState(()=> localStorage.getItem("avatar_"+user) || "👤");
+  const [showPicker, setShowPicker] = useState(false);
+  const AVATAR_OPTIONS = ["👤","😊","😎","🥰","🤩","😇","🦊","🐼","🐨","🐸","🦁","🐯","🐻","🐙","🦋","🌸","🌟","🔥","💎","🎯","🎨","🎵","🚀","⚡","🌈"];
+
+  async function selectAvatar(emoji) {
+    setAvatar(emoji);
+    localStorage.setItem("avatar_"+user, emoji);
+    setShowPicker(false);
+    await apiCall({ action:"saveAvatar", user, token, value:emoji });
+  }
+
   return (
     <div className="menu-overlay">
       <div className="menu-backdrop" onClick={onClose} />
       <div className="menu-panel">
         <div style={{ padding:"52px 20px 20px", borderBottom:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:28, marginBottom:8 }}>👤</div>
+          <div
+            onClick={()=>setShowPicker(p=>!p)}
+            style={{ fontSize:44, marginBottom:8, cursor:"pointer", display:"inline-block", lineHeight:1 }}
+            title="點擊更換頭像"
+          >{avatar}</div>
+          {showPicker && (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10, background:C.bg, borderRadius:12, padding:10 }}>
+              {AVATAR_OPTIONS.map(e => (
+                <button key={e} onClick={()=>selectAvatar(e)}
+                  style={{ fontSize:24, background:avatar===e?C.accentLight:"none", border:avatar===e?`1.5px solid ${C.accent}`:"1.5px solid transparent", borderRadius:8, padding:4, cursor:"pointer", lineHeight:1 }}>
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
           <div style={{ fontSize:16, fontWeight:700, color:C.text }}>{displayName}</div>
           <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>{user}</div>
         </div>
@@ -317,8 +342,13 @@ function MainShell({ user, token, displayName: displayName_prop }) {
         setPlannerName(name);
         localStorage.setItem("plannerName_"+user, name);
       } else {
-        // 清掉可能殘留的壞值
         localStorage.removeItem("plannerName_"+user);
+      }
+    });
+    // 載入頭像
+    apiCall({ action:"getAvatar", user, token }).then(val => {
+      if (val && typeof val === "string") {
+        localStorage.setItem("avatar_"+user, val);
       }
     });
   },[]);
@@ -420,6 +450,7 @@ function MainShell({ user, token, displayName: displayName_prop }) {
       {showMenu && (
         <HamburgerMenu
           user={user}
+          token={token}
           displayName={displayName}
           currentModule={currentModule}
           onSwitch={setCurrentModule}
