@@ -462,7 +462,15 @@ function MainShell({ user, token, displayName: displayName_prop }) {
 
 function Root() {
   const [session, setSession] = useState(()=>{
-    try { return JSON.parse(localStorage.getItem("session")); } catch { return null; }
+    try {
+      const s = JSON.parse(localStorage.getItem("session"));
+      // 舊版 session 沒有 token，強制清除讓使用者重新登入
+      if (s && !s.token) {
+        localStorage.removeItem("session");
+        return null;
+      }
+      return s;
+    } catch { return null; }
   });
   function handleLogin(user, token, displayName) {
     const s = {user, token, displayName};
