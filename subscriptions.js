@@ -244,7 +244,8 @@ function SubCard({ sub, onEdit, onDelete }) {
   const monthlyNTD = toMonthlyNTD(sub.amount, sub.currency, sub.cycle);
 
   return (
-    <div className="fade-up" style={{ background:C.card, borderRadius:16, padding:"16px", boxShadow:"0 1px 4px rgba(0,0,0,0.07)", display:"flex", alignItems:"center", gap:14 }}>
+    <div className="fade-up" onClick={onEdit}
+      style={{ background:C.card, borderRadius:16, padding:"16px", boxShadow:"0 1px 4px rgba(0,0,0,0.07)", display:"flex", alignItems:"center", gap:14, cursor:"pointer" }}>
       {/* Logo */}
       <div style={{ width:44, height:44, borderRadius:12, background:C.bg, border:`1.5px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", flexShrink:0 }}>
         {sub.emoji ? (
@@ -260,12 +261,12 @@ function SubCard({ sub, onEdit, onDelete }) {
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontSize:15, fontWeight:600, color:C.text, marginBottom:3 }}>{sub.name}</div>
         <div style={{ fontSize:12, color:C.sub, display:"flex", gap:8, flexWrap:"wrap" }}>
-          {sub.card && <span>💳 {sub.card}</span>}
-          <span>🔄 {sub.cycle}</span>
+          {sub.card && <span>{sub.card}</span>}
+          <span>{sub.cycle}</span>
         </div>
       </div>
 
-      {/* 金額 */}
+      {/* 金額 + 刪除 */}
       <div style={{ textAlign:"right", flexShrink:0 }}>
         <div style={{ fontSize:16, fontWeight:700, color:C.text }}>
           {sub.currency === "USD" ? "$" : "NT$"}{sub.amount}
@@ -276,12 +277,10 @@ function SubCard({ sub, onEdit, onDelete }) {
         {sub.currency === "USD" && (
           <div style={{ fontSize:11, color:C.sub }}>≈ NT${Math.round(sub.currency==="USD"?sub.amount*USD_TO_NTD:sub.amount)}</div>
         )}
-      </div>
-
-      {/* 操作 */}
-      <div style={{ display:"flex", flexDirection:"column", gap:4, flexShrink:0 }}>
-        <button onClick={onEdit} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, padding:"4px 8px", cursor:"pointer", fontSize:12, color:C.sub }}>✏️</button>
-        <button onClick={onDelete} style={{ background:"none", border:`1px solid ${C.red}`, borderRadius:8, padding:"4px 8px", cursor:"pointer", fontSize:12, color:C.red }}>✕</button>
+        <button onClick={e=>{ e.stopPropagation(); onDelete(); }}
+          style={{ marginTop:6, background:"none", border:"none", padding:0, cursor:"pointer", fontSize:12, color:C.red }}>
+          刪除
+        </button>
       </div>
     </div>
   );

@@ -17,6 +17,7 @@
   <script src="/subscriptions.js" type="text/babel"></script>
   <script src="/weight.js" type="text/babel"></script>
   <script src="/budget.js" type="text/babel"></script>
+  <script src="/countdown.js" type="text/babel"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     html, body, #root { height: 100%; }
@@ -46,6 +47,7 @@ const MODULES = [
   { id:"subscriptions", label:"訂閱管理", emoji:"💳", component: SubscriptionsApp },
   { id:"weight", label:"體重記錄", emoji:"⚖️", component: WeightApp },
   { id:"budget", label:"記帳", emoji:"💰", component: BudgetApp },
+  { id:"countdown", label:"紀念日", emoji:"🗓️", component: CountdownApp },
 ];
 
 function CoverPage({ onLogin }) {
