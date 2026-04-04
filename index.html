@@ -429,23 +429,45 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     }
     setAppLoading(false);
 
-    // 請求通知權限並更新 SW cache
+    // 請求通知權限並訂閱推播
     if ("Notification" in window && "serviceWorker" in navigator) {
-      // 請求權限（如果還沒有）
       if (Notification.permission === "default") {
         Notification.requestPermission();
       }
-      // 把 session 和 countdown 資料寫進 SW cache，供背景檢查用
       navigator.serviceWorker.ready.then(async reg => {
         const cache = await caches.open("my-planner-v1");
         await cache.put("/sw-session", new Response(JSON.stringify({ user, token })));
-        // countdown 資料
+
+        // countdown 資料寫進 SW cache
         const countdownVal = await apiCall({ action:"readOne", user, sheet:"countdown", key:"list", token });
         if (countdownVal) {
           const items = typeof countdownVal === "string" ? countdownVal : JSON.stringify(countdownVal);
           await cache.put("/sw-countdown", new Response(items));
         }
-        // 通知 SW 立刻檢查一次（今天有沒有紀念日）
+
+        // 訂閱推播（VAPID）
+        if (Notification.permission === "granted") {
+          try {
+            const VAPID_PUBLIC_KEY = "BC0qwSYRMXxuc1OQRD1nvJUFmw5HKQACpsaIClWHv3RU9PYek_5ixbVVd072_7OlSBpN9D9UQq6wl9OZ7CKk34w";
+            // 將 base64 public key 轉成 Uint8Array
+            const urlBase64ToUint8Array = (base64String) => {
+              const padding = "=".repeat((4 - base64String.length % 4) % 4);
+              const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+              const rawData = window.atob(base64);
+              return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+            };
+            const subscription = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+            });
+            // 存到 Firestore
+            await apiCall({ action:"savePushSubscription", user, token, subscription: subscription.toJSON() });
+          } catch(e) {
+            console.log("推播訂閱失敗:", e);
+          }
+        }
+
+        // 通知 SW 立刻檢查今天有沒有紀念日
         reg.active?.postMessage({ type: "CHECK_COUNTDOWNS" });
       });
     }

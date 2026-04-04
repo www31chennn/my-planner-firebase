@@ -215,6 +215,16 @@ async function handleAction(p) {
     return { ok: true };
   }
 
+  if (action === "savePushSubscription") {
+    if (!await verifyToken()) return { ok: false };
+    const subscription = p.subscription;
+    if (!subscription) return { ok: false };
+    await db.collection("_users").doc(user).update({
+      pushSubscription: subscription
+    });
+    return { ok: true };
+  }
+
   if (action === "getAvatar") {
     if (!await verifyToken()) return null;
     const doc = await db.collection("_users").doc(user).get();
