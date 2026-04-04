@@ -105,7 +105,8 @@ function CountdownModal({ item, onSave, onClose }) {
 
           <div>
             <div style={{ fontSize: 12, color: C.sub, marginBottom: 6 }}>日期</div>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} />
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              style={{ ...inp, display:"block", maxWidth:"100%" }} />
           </div>
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

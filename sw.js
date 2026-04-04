@@ -89,7 +89,7 @@ async function checkCountdowns() {
 
     if (match) {
       await self.registration.showNotification("my-planner", {
-        body: `今天是 ${item.name} 紀念日！`,
+        body: `今天是 ${item.name}`,
         icon: "/icon.png",
         badge: "/icon.png",
         tag: `countdown-${item.id}`,

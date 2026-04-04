@@ -95,7 +95,7 @@ module.exports = async function handler(req, res) {
             subscription,
             JSON.stringify({
               title: "my-planner",
-              body: `今天是 ${item.name} 紀念日！`,
+              body: `今天是 ${item.name}`,
             })
           );
           sent++;
