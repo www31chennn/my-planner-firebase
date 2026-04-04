@@ -191,6 +191,19 @@ async function handleAction(p) {
     return { ok: true };
   }
 
+  if (action === "getModules") {
+    if (!await verifyToken()) return null;
+    const doc = await db.collection("_users").doc(user).get();
+    return doc.exists ? (doc.data().enabledModules || ["planner"]) : ["planner"];
+  }
+
+  if (action === "saveModules") {
+    if (!await verifyToken()) return { ok: false };
+    const modules = JSON.parse(value || "[\"planner\"]");
+    await db.collection("_users").doc(user).update({ enabledModules: modules });
+    return { ok: true };
+  }
+
   if (action === "getSetting") {
     if (!await verifyToken()) return null;
     const doc = await db.collection("_users").doc(user).get();
@@ -350,4 +363,3 @@ async function handleAction(p) {
 
   return { error: "unknown action" };
 }
-

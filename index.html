@@ -136,7 +136,7 @@ function CoverPage({ onLogin }) {
   );
 }
 
-function HamburgerMenu({ user, token, displayName, currentModule, onSwitch, onSettings, onLogout, onClose }) {
+function HamburgerMenu({ user, token, displayName, currentModule, enabledModules, onSwitch, onSettings, onLogout, onClose }) {
   const [avatar, setAvatar] = useState(()=> localStorage.getItem("avatar_"+user) || "👤");
   const [showPicker, setShowPicker] = useState(false);
   const [customEmoji, setCustomEmoji] = useState("");
@@ -191,7 +191,7 @@ function HamburgerMenu({ user, token, displayName, currentModule, onSwitch, onSe
         </div>
         <div style={{ flex:1, padding:"12px 0", overflowY:"auto" }}>
           <div style={{ fontSize:11, color:C.sub, padding:"8px 20px 4px", letterSpacing:1 }}>模組</div>
-          {MODULES.map(m => (
+          {MODULES.filter(m => enabledModules.includes(m.id)).map(m => (
             <button key={m.id} onClick={()=>{ onSwitch(m.id); onClose(); }}
               style={{ width:"100%", display:"flex", alignItems:"center", gap:12, padding:"13px 20px", background:currentModule===m.id?C.accentLight:"none", border:"none", cursor:"pointer", textAlign:"left", borderLeft:currentModule===m.id?`3px solid ${C.accent}`:"3px solid transparent" }}>
               <span style={{ fontSize:20 }}>{m.emoji}</span>
@@ -214,7 +214,7 @@ function HamburgerMenu({ user, token, displayName, currentModule, onSwitch, onSe
   );
 }
 
-function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNicknameUpdate, onPartnerChange }) {
+function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNicknameUpdate, onPartnerChange, enabledModules, onModulesChange }) {
   const [name, setName] = useState(plannerName);
   const [nickname, setNickname] = useState("");
   const [msg, setMsg] = useState("");
@@ -316,6 +316,45 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
           {/* 分隔線 */}
           <div style={{ height:1, background:C.border }} />
 
+          {/* 模組管理 */}
+          <div>
+            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:10 }}>顯示模組</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {MODULES.map(m => {
+                const isEnabled = enabledModules.includes(m.id);
+                const isPlanner = m.id === "planner";
+                return (
+                  <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <span style={{ fontSize:18 }}>{m.emoji}</span>
+                      <span style={{ fontSize:14, color: isPlanner ? C.sub : C.text }}>{m.label}</span>
+                      {isPlanner && <span style={{ fontSize:11, color:C.sub }}>（必要）</span>}
+                    </div>
+                    <div onClick={() => {
+                      if (isPlanner) return; // 計畫本不能關
+                      const next = isEnabled
+                        ? enabledModules.filter(id => id !== m.id)
+                        : [...enabledModules, m.id];
+                      onModulesChange(next);
+                      apiCall({ action:"saveModules", user, token, value:JSON.stringify(next) });
+                    }}
+                      style={{ width:44, height:24, borderRadius:12,
+                        background: isEnabled ? C.accent : C.border,
+                        cursor: isPlanner ? "default" : "pointer",
+                        position:"relative", transition:"background 0.2s", flexShrink:0, opacity: isPlanner ? 0.4 : 1 }}>
+                      <div style={{ position:"absolute", top:2, left: isEnabled ? 22 : 2, width:20, height:20,
+                        borderRadius:10, background:"#fff", transition:"left 0.2s",
+                        boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 分隔線 */}
+          <div style={{ height:1, background:C.border }} />
+
           {/* 記帳夥伴 */}
           <div>
             <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:10 }}>💰 記帳夥伴</div>
@@ -366,6 +405,7 @@ function MainShell({ user, token, displayName: displayName_prop }) {
   );
   // 用 partnerVersion 讓 BudgetApp 知道夥伴關係有變，強制重新讀取
   const [partnerVersion, setPartnerVersion] = useState(0);
+  const [enabledModules, setEnabledModules] = useState(["planner"]);
 
   // 從 _users 第四欄載入計畫本名稱
   useEffect(()=>{
@@ -382,6 +422,14 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     apiCall({ action:"getAvatar", user, token }).then(val => {
       if (val && typeof val === "string") {
         localStorage.setItem("avatar_"+user, val);
+      }
+    });
+    // 載入啟用的模組
+    apiCall({ action:"getModules", user, token }).then(val => {
+      if (Array.isArray(val) && val.length > 0) {
+        setEnabledModules(val);
+        // 如果目前所在模組被關閉，切換到計畫本
+        if (!val.includes("planner")) setEnabledModules(["planner"]);
       }
     });
   },[]);
@@ -531,7 +579,12 @@ function MainShell({ user, token, displayName: displayName_prop }) {
           token={token}
           displayName={displayName}
           currentModule={currentModule}
-          onSwitch={setCurrentModule}
+          enabledModules={enabledModules}
+          onSwitch={id => {
+            setCurrentModule(id);
+            // 如果切換到已停用的模組，改去計畫本
+            if (!enabledModules.includes(id)) setCurrentModule("planner");
+          }}
           onSettings={()=>setShowSettings(true)}
           onLogout={handleLogout}
           onClose={()=>setShowMenu(false)}
@@ -544,6 +597,12 @@ function MainShell({ user, token, displayName: displayName_prop }) {
           token={token}
           plannerName={plannerName}
           setPlannerName={setPlannerName}
+          enabledModules={enabledModules}
+          onModulesChange={next => {
+            setEnabledModules(next);
+            // 如果目前所在模組被關閉，切換到計畫本
+            if (!next.includes(currentModule)) setCurrentModule("planner");
+          }}
           onClose={()=>setShowSettings(false)}
           onNicknameUpdate={newName => {
             const s = JSON.parse(localStorage.getItem("session"));
@@ -552,15 +611,12 @@ function MainShell({ user, token, displayName: displayName_prop }) {
             setDisplayName(newName);
           }}
           onPartnerChange={newPartner => {
-            // 更新全域狀態
             window._CACHE = window._CACHE || {};
             window._CACHE[`${user}:budget_partner:partner`] = newPartner;
             if (!newPartner) window._SHARED_TOKEN = "";
-            // 清掉所有 _shared:budget 快取，強制 BudgetApp 重新讀取
             Object.keys(window._CACHE).forEach(k => {
               if (k.startsWith("_shared:budget:")) delete window._CACHE[k];
             });
-            // 遞增 version，BudgetApp 的 useEffect 會重新執行
             setPartnerVersion(v => v + 1);
           }}
         />

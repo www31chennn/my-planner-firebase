@@ -188,6 +188,21 @@ async function handleAction(p) {
     return { ok: true };
   }
 
+  // ── getModules ────────────────────────────────────────
+  if (action === "getModules") {
+    if (!await verifyToken()) return null;
+    const doc = await db.collection("_users").doc(user).get();
+    return doc.exists ? (doc.data().enabledModules || ["planner"]) : ["planner"];
+  }
+
+  // ── saveModules ───────────────────────────────────────
+  if (action === "saveModules") {
+    if (!await verifyToken()) return { ok: false };
+    const modules = JSON.parse(value || "[\"planner\"]");
+    await db.collection("_users").doc(user).update({ enabledModules: modules });
+    return { ok: true };
+  }
+
   // ── getSetting ────────────────────────────────────────
   if (action === "getSetting") {
     if (!await verifyToken()) return null;
