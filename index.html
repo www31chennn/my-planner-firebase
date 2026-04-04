@@ -9,6 +9,19 @@
   <meta name="apple-mobile-web-app-title" content="計畫本" />
   <title>計畫本</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
+  <script>
+    // Service Worker 註冊
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").then(reg => {
+          window._SW_REG = reg;
+          console.log("SW 已註冊");
+        }).catch(err => {
+          console.log("SW 註冊失敗:", err);
+        });
+      });
+    }
+  </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -415,6 +428,27 @@ function MainShell({ user, token, displayName: displayName_prop }) {
         });
     }
     setAppLoading(false);
+
+    // 請求通知權限並更新 SW cache
+    if ("Notification" in window && "serviceWorker" in navigator) {
+      // 請求權限（如果還沒有）
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+      // 把 session 和 countdown 資料寫進 SW cache，供背景檢查用
+      navigator.serviceWorker.ready.then(async reg => {
+        const cache = await caches.open("my-planner-v1");
+        await cache.put("/sw-session", new Response(JSON.stringify({ user, token })));
+        // countdown 資料
+        const countdownVal = await apiCall({ action:"readOne", user, sheet:"countdown", key:"list", token });
+        if (countdownVal) {
+          const items = typeof countdownVal === "string" ? countdownVal : JSON.stringify(countdownVal);
+          await cache.put("/sw-countdown", new Response(items));
+        }
+        // 通知 SW 立刻檢查一次（今天有沒有紀念日）
+        reg.active?.postMessage({ type: "CHECK_COUNTDOWNS" });
+      });
+    }
     })();
   },[]);
 

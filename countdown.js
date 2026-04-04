@@ -44,6 +44,20 @@ function CountdownModal({ item, onSave, onClose }) {
   const [notify, setNotify] = useState(item?.notify ?? false);
   const [error, setError] = useState("");
 
+  async function handleNotifyToggle() {
+    if (!notify) {
+      // 開啟通知前先確認權限
+      if ("Notification" in window) {
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") {
+          alert("請允許通知權限才能使用此功能");
+          return;
+        }
+      }
+    }
+    setNotify(p => !p);
+  }
+
   function handleSave() {
     if (!name.trim()) { setError("請輸入名稱"); return; }
     if (!date) { setError("請選擇日期"); return; }
@@ -107,7 +121,7 @@ function CountdownModal({ item, onSave, onClose }) {
               <div style={{ fontSize: 14, color: C.text }}>當天通知</div>
               <div style={{ fontSize: 12, color: C.sub }}>需先將 App 加到主畫面</div>
             </div>
-            {toggle(notify, setNotify)}
+            {toggle(notify, handleNotifyToggle)}
           </div>
 
           {error && <div style={{ fontSize: 13, color: C.red }}>{error}</div>}
@@ -187,6 +201,11 @@ function CountdownApp({ user, token }) {
     clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
       await writeOne(user, SHEET, KEY, JSON.stringify(next), token);
+      // 同步更新 SW cache，讓背景通知能讀到最新資料
+      if ("caches" in window) {
+        const cache = await caches.open("my-planner-v1");
+        await cache.put("/sw-countdown", new Response(JSON.stringify(next)));
+      }
     }, 1000);
   }
 
