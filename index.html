@@ -432,7 +432,7 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     // 請求通知權限並訂閱推播
     if ("Notification" in window && "serviceWorker" in navigator) {
       if (Notification.permission === "default") {
-        Notification.requestPermission();
+        await Notification.requestPermission();
       }
       navigator.serviceWorker.ready.then(async reg => {
         const cache = await caches.open("my-planner-v1");
@@ -467,8 +467,10 @@ function MainShell({ user, token, displayName: displayName_prop }) {
           }
         }
 
-        // 通知 SW 立刻檢查今天有沒有紀念日
-        reg.active?.postMessage({ type: "CHECK_COUNTDOWNS" });
+        // 通知 SW 立刻檢查今天有沒有紀念日（確認有權限才發）
+        if (Notification.permission === "granted") {
+          reg.active?.postMessage({ type: "CHECK_COUNTDOWNS" });
+        }
       });
     }
     })();

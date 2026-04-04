@@ -55,6 +55,9 @@ self.addEventListener("message", e => {
 });
 
 async function checkCountdowns() {
+  // 確認有通知權限才繼續
+  if (Notification.permission !== "granted") return;
+
   // 從 SW 的 cache 讀取倒數日資料和 session
   const cache = await caches.open(CACHE_NAME);
   const sessionRes = await cache.match("/sw-session");
