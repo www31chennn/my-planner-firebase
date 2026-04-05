@@ -58,19 +58,26 @@ async function checkCountdowns() {
   // 確認有通知權限才繼續
   if (Notification.permission !== "granted") return;
 
-  // 從 SW 的 cache 讀取倒數日資料和 session
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+
   const cache = await caches.open(CACHE_NAME);
+
+  // 檢查今天是否已經從 SW 發過通知
+  const sentRes = await cache.match("/sw-sent-date");
+  if (sentRes) {
+    const sentDate = await sentRes.text();
+    if (sentDate === todayStr) return; // 今天已經發過，不重複發
+  }
+
+  // 從 SW 的 cache 讀取倒數日資料
   const sessionRes = await cache.match("/sw-session");
   const itemsRes = await cache.match("/sw-countdown");
   if (!sessionRes || !itemsRes) return;
 
-  const session = await sessionRes.json();
   const items = await itemsRes.json();
   if (!Array.isArray(items)) return;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
 
   for (const item of items) {
     if (!item.notify) continue;
@@ -79,12 +86,9 @@ async function checkCountdowns() {
     let match = false;
 
     if (item.repeat) {
-      // 每年重複：比對月和日
       match = (target.getMonth() === today.getMonth() && target.getDate() === today.getDate());
     } else {
-      // 不重複：比對完整日期
-      const itemDateStr = item.date;
-      match = itemDateStr === todayStr;
+      match = item.date === todayStr;
     }
 
     if (match) {
@@ -94,6 +98,8 @@ async function checkCountdowns() {
         badge: "/icon.png",
         tag: `countdown-${item.id}`,
       });
+      // 記錄今天已發過通知
+      await cache.put("/sw-sent-date", new Response(todayStr));
     }
   }
 }
