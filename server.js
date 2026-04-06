@@ -231,6 +231,13 @@ async function handleAction(p) {
     return { ok: true };
   }
 
+  // ── getNotificationSentDate ───────────────────────────
+  if (action === "getNotificationSentDate") {
+    if (!await verifyToken()) return null;
+    const doc = await db.collection("_users").doc(user).get();
+    return doc.exists ? (doc.data().notificationSentDate || "") : "";
+  }
+
   // ── savePushSubscription ──────────────────────────────
   if (action === "savePushSubscription") {
     if (!await verifyToken()) return { ok: false };

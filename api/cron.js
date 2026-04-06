@@ -89,6 +89,7 @@ module.exports = async function handler(req, res) {
 
       // 發送推播
       const subscription = userData.pushSubscription;
+      let userSent = 0;
       for (const item of todayItems) {
         try {
           await webpush.sendNotification(
@@ -98,14 +99,20 @@ module.exports = async function handler(req, res) {
               body: `今天是 ${item.name}`,
             })
           );
+          userSent++;
           sent++;
         } catch (err) {
-          // 訂閱已失效（使用者取消或換裝置），清除舊訂閱
           if (err.statusCode === 410 || err.statusCode === 404) {
             await userDoc.ref.update({ pushSubscription: null });
           }
           failed++;
         }
+      }
+      // 記錄今天已從 server 發過通知，讓 SW 不重複發
+      if (userSent > 0) {
+        const twNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+        const sentDate = `${twNow.getUTCFullYear()}-${String(twNow.getUTCMonth()+1).padStart(2,"0")}-${String(twNow.getUTCDate()).padStart(2,"0")}`;
+        await userDoc.ref.update({ notificationSentDate: sentDate });
       }
     }
 

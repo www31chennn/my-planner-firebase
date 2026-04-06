@@ -9,8 +9,6 @@
   <meta name="apple-mobile-web-app-title" content="計畫本" />
   <title>計畫本</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
-  <link rel="apple-touch-icon" href="/icon.png">
-  <link rel="icon" type="image/png" href="/icon.png">
   <script>
     // Service Worker 註冊
     if ("serviceWorker" in navigator) {
@@ -499,7 +497,6 @@ function MainShell({ user, token, displayName: displayName_prop }) {
         if (Notification.permission === "granted") {
           try {
             const VAPID_PUBLIC_KEY = "BC0qwSYRMXxuc1OQRD1nvJUFmw5HKQACpsaIClWHv3RU9PYek_5ixbVVd072_7OlSBpN9D9UQq6wl9OZ7CKk34w";
-            // 將 base64 public key 轉成 Uint8Array
             const urlBase64ToUint8Array = (base64String) => {
               const padding = "=".repeat((4 - base64String.length % 4) % 4);
               const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -510,16 +507,23 @@ function MainShell({ user, token, displayName: displayName_prop }) {
               userVisibleOnly: true,
               applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
             });
-            // 存到 Firestore
             await apiCall({ action:"savePushSubscription", user, token, subscription: subscription.toJSON() });
           } catch(e) {
             console.log("推播訂閱失敗:", e);
           }
-        }
 
-        // 通知 SW 立刻檢查今天有沒有紀念日（確認有權限才發）
-        if (Notification.permission === "granted") {
-          reg.active?.postMessage({ type: "CHECK_COUNTDOWNS" });
+          // 檢查 server 今天是否已發過通知，若是則告知 SW 不要重複發
+          const sentDateVal = await apiCall({ action:"getNotificationSentDate", user, token });
+          const today = new Date();
+          const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+          if (sentDateVal === todayStr) {
+            // server 今天已發過，寫進 SW cache 防止重複
+            const cache = await caches.open("my-planner-v1");
+            await cache.put("/sw-sent-date", new Response(todayStr));
+          } else {
+            // server 今天還沒發，讓 SW 檢查（處理 Cron 還沒跑的情況）
+            reg.active?.postMessage({ type: "CHECK_COUNTDOWNS" });
+          }
         }
       });
     }
