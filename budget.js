@@ -123,6 +123,7 @@ function BudgetApp({ user, token, saving, setSaving, displayName, partnerVersion
   const [showAdd, setShowAdd] = useState(false);
   const [partner, setPartner] = useState(undefined);
   const [filterWho, setFilterWho] = useState("all");
+  const [displayCount, setDisplayCount] = useState(null); // null = 只顯示今日, number = 顯示筆數, Infinity = 全部
   const [pullY, setPullY] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const pullStart = useRef(null);
@@ -296,12 +297,14 @@ function BudgetApp({ user, token, saving, setSaving, displayName, partnerVersion
     const [y,m] = viewMonth.split("-").map(Number);
     if (m === 1) setViewMonth(`${y-1}-12`);
     else setViewMonth(`${y}-${String(m-1).padStart(2,'0')}`);
+    setDisplayCount(null);
   }
   function nextMonth() {
     clearMonthCache();
     const [y,m] = viewMonth.split("-").map(Number);
     if (m === 12) setViewMonth(`${y+1}-01`);
     else setViewMonth(`${y}-${String(m+1).padStart(2,'0')}`);
+    setDisplayCount(null);
   }
 
   const [vy, vm] = viewMonth.split("-").map(Number);
@@ -380,45 +383,84 @@ function BudgetApp({ user, token, saving, setSaving, displayName, partnerVersion
           <div style={{ fontSize:15, marginBottom:6 }}>這個月還沒有記錄</div>
           <div style={{ fontSize:13 }}>點下方 + 新增第一筆</div>
         </div>
-      ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          {filteredRecords.map((r,i) => {
-            const cat = CATEGORIES.find(c=>c.id===r.category) || CATEGORIES[4];
-            const rDate = r.date ? new Date(r.date+"T00:00:00") : new Date(r.id);
-            const dateStr = rDate.toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"});
-            const prevDate = i>0 ? (filteredRecords[i-1].date ? new Date(filteredRecords[i-1].date+"T00:00:00") : new Date(filteredRecords[i-1].id)).toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"}) : null;
-            const showDate = i===0 || prevDate !== dateStr;
+      ) : (() => {
+        const todayStr = new Date().toLocaleDateString("zh-TW");
+        let visibleRecords;
+        if (displayCount === null) {
+          const todayOnly = filteredRecords.filter(r => {
+            const d = r.date ? new Date(r.date+"T00:00:00") : new Date(r.id);
+            return d.toLocaleDateString("zh-TW") === todayStr;
+          });
+          visibleRecords = todayOnly.length > 0 ? todayOnly : filteredRecords.slice(0, 3);
+        } else if (displayCount === Infinity) {
+          visibleRecords = filteredRecords;
+        } else {
+          visibleRecords = filteredRecords.slice(0, displayCount);
+        }
+        const hiddenCount = filteredRecords.length - visibleRecords.length;
 
-            return (
-              <div key={r.id}>
-                {showDate && (
-                  <div style={{ fontSize:12, color:C.sub, padding:"8px 4px 4px", fontWeight:500 }}>
-                    {dateStr}{rDate.toLocaleDateString("zh-TW")===today?" · 今天":""}
-                  </div>
-                )}
-                <div className="fade-up" style={{ background:C.card, borderRadius:14, padding:"12px 14px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 1px 3px rgba(0,0,0,0.05)", animationDelay:`${i*15}ms` }}>
-                  <div style={{ width:40, height:40, borderRadius:12, background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:20 }}>
-                    {cat.emoji}
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <span style={{ fontSize:14, fontWeight:600, color:C.text }}>{cat.label}</span>
-                      <span style={{ fontSize:11, color:C.sub }}>· {r.who}</span>
-                      <span style={{ fontSize:11, color:C.sub }}>· {r.time}</span>
+        return (
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            {visibleRecords.map((r,i) => {
+              const cat = CATEGORIES.find(c=>c.id===r.category) || CATEGORIES[4];
+              const rDate = r.date ? new Date(r.date+"T00:00:00") : new Date(r.id);
+              const dateStr = rDate.toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"});
+              const prev = visibleRecords[i-1];
+              const prevDate = i>0 ? (prev.date ? new Date(prev.date+"T00:00:00") : new Date(prev.id)).toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"}) : null;
+              const showDate = i===0 || prevDate !== dateStr;
+
+              return (
+                <div key={r.id}>
+                  {showDate && (
+                    <div style={{ fontSize:12, color:C.sub, padding:"8px 4px 4px", fontWeight:500 }}>
+                      {dateStr}{rDate.toLocaleDateString("zh-TW")===todayStr?" · 今天":""}
                     </div>
-                    {r.note && <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>{r.note}</div>}
-                  </div>
-                  <div style={{ textAlign:"right", flexShrink:0 }}>
-                    <div style={{ fontSize:16, fontWeight:700, color:C.text }}>NT${r.amount.toLocaleString()}</div>
-                    <button onClick={()=>handleDelete(r.id)}
-                      style={{ fontSize:11, color:C.red, background:"none", border:"none", cursor:"pointer", padding:0, marginTop:2 }}>刪除</button>
+                  )}
+                  <div className="fade-up" style={{ background:C.card, borderRadius:14, padding:"12px 14px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 1px 3px rgba(0,0,0,0.05)", animationDelay:`${i*15}ms` }}>
+                    <div style={{ width:40, height:40, borderRadius:12, background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:20 }}>
+                      {cat.emoji}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                        <span style={{ fontSize:14, fontWeight:600, color:C.text }}>{cat.label}</span>
+                        <span style={{ fontSize:11, color:C.sub }}>· {r.who}</span>
+                        <span style={{ fontSize:11, color:C.sub }}>· {r.time}</span>
+                      </div>
+                      {r.note && <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>{r.note}</div>}
+                    </div>
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      <div style={{ fontSize:16, fontWeight:700, color:C.text }}>NT${r.amount.toLocaleString()}</div>
+                      <button onClick={()=>handleDelete(r.id)}
+                        style={{ fontSize:11, color:C.red, background:"none", border:"none", cursor:"pointer", padding:0, marginTop:2 }}>刪除</button>
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+
+            {hiddenCount > 0 && (
+              <div style={{ display:"flex", gap:8, paddingBottom:8 }}>
+                <button onClick={() => setDisplayCount(c => c === null ? visibleRecords.length + 10 : c + 10)}
+                  style={{ flex:1, padding:"11px 0", borderRadius:12, border:`1.5px solid ${C.border}`, background:C.card, color:C.text, fontSize:13, cursor:"pointer", fontWeight:500 }}>
+                  載入更多（還有 {hiddenCount} 筆）
+                </button>
+                <button onClick={() => setDisplayCount(Infinity)}
+                  style={{ padding:"11px 14px", borderRadius:12, border:`1.5px solid ${C.border}`, background:C.card, color:C.sub, fontSize:13, cursor:"pointer" }}>
+                  全部
+                </button>
               </div>
-            );
-          })}
-        </div>
-      )}
+            )}
+            {hiddenCount === 0 && filteredRecords.length > 3 && (
+              <button onClick={() => setDisplayCount(null)}
+                style={{ padding:"10px 0", borderRadius:12, border:"none", background:"none", color:C.sub, fontSize:12, cursor:"pointer" }}>
+                收起
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
+
 
       {/* 新增按鈕 */}
       <button onClick={()=>setShowAdd(true)}
