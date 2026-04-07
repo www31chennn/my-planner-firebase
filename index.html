@@ -214,11 +214,12 @@ function HamburgerMenu({ user, token, displayName, currentModule, enabledModules
   );
 }
 
-function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNicknameUpdate, onPartnerChange, enabledModules, onModulesChange }) {
+function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNicknameUpdate, onPartnerChange, enabledModules, onModulesChange, defaultModule, onDefaultModuleChange }) {
   const [name, setName] = useState(plannerName);
   const [nickname, setNickname] = useState("");
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedDefault, setSelectedDefault] = useState(defaultModule || "planner");
 
   // 記帳夥伴
   const [partner, setPartner] = useState(window._CACHE?.[`${user}:budget_partner:partner`] || "");
@@ -355,6 +356,38 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
           {/* 分隔線 */}
           <div style={{ height:1, background:C.border }} />
 
+          {/* 預設開啟頁面 */}
+          <div>
+            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>🏠 開啟 App 預設頁面</div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:10 }}>每次開啟 App 時，直接跳到這個分頁</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {MODULES.filter(m => enabledModules.includes(m.id)).map(m => {
+                const isSelected = selectedDefault === m.id;
+                return (
+                  <button key={m.id} onClick={async () => {
+                    setSelectedDefault(m.id);
+                    localStorage.setItem("defaultModule_"+user, m.id);
+                    onDefaultModuleChange && onDefaultModuleChange(m.id);
+                    await apiCall({ action:"saveDefaultModule", user, token, value:m.id });
+                    setMsg("預設頁面已更新！"); setTimeout(()=>setMsg(""), 2000);
+                  }} style={{
+                    display:"flex", alignItems:"center", gap:10,
+                    padding:"10px 14px", borderRadius:12, border:`1.5px solid ${isSelected ? C.accent : C.border}`,
+                    background: isSelected ? C.accentLight : C.bg,
+                    cursor:"pointer", textAlign:"left", transition:"all 0.15s"
+                  }}>
+                    <span style={{ fontSize:20 }}>{m.emoji}</span>
+                    <span style={{ fontSize:14, fontWeight: isSelected ? 600 : 400, color: isSelected ? C.accent : C.text, flex:1 }}>{m.label}</span>
+                    {isSelected && <span style={{ fontSize:12, color:C.accent, fontWeight:600 }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 分隔線 */}
+          <div style={{ height:1, background:C.border }} />
+
           {/* 記帳夥伴 */}
           <div>
             <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:10 }}>💰 記帳夥伴</div>
@@ -395,7 +428,9 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
 
 function MainShell({ user, token, displayName: displayName_prop }) {
   const thisYear = new Date().getFullYear();
-  const [currentModule, setCurrentModule] = useState("planner");
+  const storedDefault = localStorage.getItem("defaultModule_"+user);
+  const [currentModule, setCurrentModule] = useState(storedDefault || "planner");
+  const [defaultModule, setDefaultModule] = useState(storedDefault || "planner");
   const [saving, setSaving] = useState({goals:false, month:false, daily:false});
   const [showMenu, setShowMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -406,33 +441,6 @@ function MainShell({ user, token, displayName: displayName_prop }) {
   // 用 partnerVersion 讓 BudgetApp 知道夥伴關係有變，強制重新讀取
   const [partnerVersion, setPartnerVersion] = useState(0);
   const [enabledModules, setEnabledModules] = useState(["planner"]);
-
-  // 從 _users 第四欄載入計畫本名稱
-  useEffect(()=>{
-    apiCall({ action:"getSetting", user, token }).then(val => {
-      if (val && String(val).trim() && String(val) !== "null" && String(val) !== "[object Object]") {
-        const name = String(val).trim();
-        setPlannerName(name);
-        localStorage.setItem("plannerName_"+user, name);
-      } else {
-        localStorage.removeItem("plannerName_"+user);
-      }
-    });
-    // 載入頭像
-    apiCall({ action:"getAvatar", user, token }).then(val => {
-      if (val && typeof val === "string") {
-        localStorage.setItem("avatar_"+user, val);
-      }
-    });
-    // 載入啟用的模組
-    apiCall({ action:"getModules", user, token }).then(val => {
-      if (Array.isArray(val) && val.length > 0) {
-        setEnabledModules(val);
-        // 如果目前所在模組被關閉，切換到計畫本
-        if (!val.includes("planner")) setEnabledModules(["planner"]);
-      }
-    });
-  },[]);
   const [appLoading, setAppLoading] = useState(true);
   const [displayName, setDisplayName] = useState(displayName_prop);
   const shellTouchStart = useRef(null);
@@ -455,14 +463,30 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     const now = new Date();
     const nowMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
-    // 只預載 budgetPartner 和 sharedToken，讓 budget.js 可以讀到
-    // 其他資料改為各模組按需載入
-    const [partnerVal, sharedTokenVal] = await Promise.all([
-      apiCall({ action:"getBudgetPartner", user, token }),
-      apiCall({ action:"getSharedToken", user, token }),
-    ]);
-    const partner = (partnerVal && String(partnerVal).trim() && String(partnerVal) !== "null") ? String(partnerVal).trim() : "";
-    const sharedToken = (sharedTokenVal && String(sharedTokenVal).trim() && String(sharedTokenVal) !== "null") ? String(sharedTokenVal).trim() : "";
+    // 一次 API 呼叫取得所有使用者設定，大幅減少 roundtrip
+    const init = await apiCall({ action:"initUser", user, token });
+    const partner = (init?.budgetPartner && String(init.budgetPartner).trim() && String(init.budgetPartner) !== "null") ? String(init.budgetPartner).trim() : "";
+    const sharedToken = (init?.sharedToken && String(init.sharedToken).trim() && String(init.sharedToken) !== "null") ? String(init.sharedToken).trim() : "";
+
+    // 套用各設定
+    if (init?.plannerName && String(init.plannerName).trim() && String(init.plannerName) !== "[object Object]") {
+      const name = String(init.plannerName).trim();
+      setPlannerName(name);
+      localStorage.setItem("plannerName_"+user, name);
+    }
+    if (init?.avatar && typeof init.avatar === "string") {
+      localStorage.setItem("avatar_"+user, init.avatar);
+    }
+    if (Array.isArray(init?.enabledModules) && init.enabledModules.length > 0) {
+      setEnabledModules(init.enabledModules);
+    }
+    if (init?.defaultModule) {
+      const dm = init.defaultModule;
+      localStorage.setItem("defaultModule_"+user, dm);
+      // 只有在沒有 localStorage 暫存時才切換（避免蓋掉使用者手動切換的頁面）
+      if (!storedDefault) setCurrentModule(dm);
+    }
+
     window._CACHE = window._CACHE || {};
     window._CACHE[`${user}:budget_partner:partner`] = partner;
     window._SHARED_TOKEN = sharedToken;
@@ -591,10 +615,18 @@ function MainShell({ user, token, displayName: displayName_prop }) {
           plannerName={plannerName}
           setPlannerName={setPlannerName}
           enabledModules={enabledModules}
+          defaultModule={defaultModule}
+          onDefaultModuleChange={dm => setDefaultModule(dm)}
           onModulesChange={next => {
             setEnabledModules(next);
             // 如果目前所在模組被關閉，切換到計畫本
             if (!next.includes(currentModule)) setCurrentModule("planner");
+            // 如果預設模組被關閉，重設預設為計畫本
+            if (!next.includes(defaultModule)) {
+              setDefaultModule("planner");
+              localStorage.setItem("defaultModule_"+user, "planner");
+              apiCall({ action:"saveDefaultModule", user, token, value:"planner" });
+            }
           }}
           onClose={()=>setShowSettings(false)}
           onNicknameUpdate={newName => {
