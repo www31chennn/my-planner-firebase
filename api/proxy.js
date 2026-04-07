@@ -268,6 +268,39 @@ async function handleAction(p) {
     return doc.exists ? (doc.data().sharedToken || "") : "";
   }
 
+  // ── 合併初始化：一次讀取所有 _users 欄位，減少 roundtrip ──
+  if (action === "initUser") {
+    if (!await verifyToken()) return { ok: false };
+    const doc = await db.collection("_users").doc(user).get();
+    if (!doc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner" };
+    const d = doc.data();
+    return {
+      ok: true,
+      plannerName: d.plannerName || "",
+      avatar: d.avatar || "👤",
+      enabledModules: d.enabledModules || ["planner"],
+      budgetPartner: d.budgetPartner || "",
+      sharedToken: d.sharedToken || "",
+      loginTheme: d.loginTheme || null,
+      defaultModule: d.defaultModule || "planner",
+    };
+  }
+
+  // ── 登入頁主題 ─────────────────────────────────────────────
+  if (action === "saveLoginTheme") {
+    if (!await verifyToken()) return { ok: false };
+    const theme = JSON.parse(value || "null");
+    await db.collection("_users").doc(user).update({ loginTheme: theme });
+    return { ok: true };
+  }
+
+  // ── 預設開啟模組 ───────────────────────────────────────────
+  if (action === "saveDefaultModule") {
+    if (!await verifyToken()) return { ok: false };
+    await db.collection("_users").doc(user).update({ defaultModule: value || "planner" });
+    return { ok: true };
+  }
+
   if (action === "setPartner") {
     if (!await verifyToken()) return { ok: false, error: "驗證失敗" };
     const partnerUser = (p.partnerUser || "").trim();

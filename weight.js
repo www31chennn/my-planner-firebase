@@ -36,7 +36,82 @@ function getBMIStatus(bmi) {
   return           { label:"肥胖", color:"#D0533A" };
 }
 
-// ── 體重輸入 Modal ─────────────────────────────────────────
+// ── 體重折線圖 ──────────────────────────────────────────────
+function WeightLineChart({ data, year, month }) {
+  const daysCount = DAYS_IN_MONTH_W(month, year);
+  // 收集有資料的點
+  const points = [];
+  for (let d = 1; d <= daysCount; d++) {
+    const key = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if (data[key]) points.push({ day: d, weight: data[key] });
+  }
+  if (points.length < 2) return null;
+
+  const W = 320, H = 110, PAD = { top: 16, bottom: 24, left: 36, right: 12 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+
+  const weights = points.map(p => p.weight);
+  const minW = Math.min(...weights);
+  const maxW = Math.max(...weights);
+  const range = maxW - minW || 1;
+
+  function xPos(day) { return PAD.left + ((day - 1) / (daysCount - 1)) * chartW; }
+  function yPos(w) { return PAD.top + chartH - ((w - minW) / range) * chartH; }
+
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xPos(p.day)} ${yPos(p.weight)}`).join(' ');
+  // 填充區域
+  const areaD = pathD + ` L ${xPos(points[points.length-1].day)} ${PAD.top + chartH} L ${xPos(points[0].day)} ${PAD.top + chartH} Z`;
+
+  // Y 軸刻度（2~3 條）
+  const yTicks = [minW, ((minW + maxW) / 2), maxW].map(v => Math.round(v * 10) / 10);
+
+  return (
+    <div style={{ background: C.card, borderRadius: 16, padding: '14px 16px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+      <div style={{ fontSize: 12, color: C.sub, marginBottom: 8, fontWeight: 500 }}>📈 當月趨勢</div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', display: 'block' }}>
+        <defs>
+          <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C.accent} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={C.accent} stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+        {/* Y軸參考線 */}
+        {yTicks.map((v, i) => {
+          const y = yPos(v);
+          return (
+            <g key={i}>
+              <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke={C.border} strokeWidth="1" strokeDasharray="3,3" />
+              <text x={PAD.left - 4} y={y + 4} textAnchor="end" fontSize="9" fill={C.sub}>{v}</text>
+            </g>
+          );
+        })}
+        {/* 填充區域 */}
+        <path d={areaD} fill="url(#wGrad)" />
+        {/* 折線 */}
+        <path d={pathD} fill="none" stroke={C.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {/* 資料點 */}
+        {points.map((p, i) => (
+          <g key={i}>
+            <circle cx={xPos(p.day)} cy={yPos(p.weight)} r="3.5" fill={C.card} stroke={C.accent} strokeWidth="2" />
+            {/* 最高最低標記 */}
+            {(p.weight === Math.max(...weights) || p.weight === Math.min(...weights)) && (
+              <text x={xPos(p.day)} y={yPos(p.weight) + (p.weight === Math.min(...weights) ? 13 : -6)}
+                textAnchor="middle" fontSize="9" fill={p.weight === Math.max(...weights) ? '#D0533A' : '#4A7C59'} fontWeight="700">
+                {p.weight}
+              </text>
+            )}
+          </g>
+        ))}
+        {/* X軸月份起訖標示 */}
+        <text x={PAD.left} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>1</text>
+        <text x={W - PAD.right} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>{daysCount}</text>
+      </svg>
+    </div>
+  );
+}
+
+
 function WeightInputModal({ date, currentWeight, onSave, onDelete, onClose }) {
   const [value, setValue] = useState(currentWeight ? String(currentWeight) : "");
   const dateLabel = new Date(date+"T00:00:00").toLocaleDateString("zh-TW",{month:"long",day:"numeric",weekday:"long"});
@@ -265,6 +340,9 @@ function WeightApp({ user, token, saving, setSaving }) {
           ))}
         </div>
       )}
+
+      {/* 折線圖 */}
+      <WeightLineChart data={data} year={year} month={month} />
 
       {/* 日曆 */}
       <div style={{ background:C.card, borderRadius:16, padding:16, boxShadow:"0 1px 3px rgba(0,0,0,0.06)" }}>
