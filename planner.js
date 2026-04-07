@@ -356,18 +356,17 @@ function DailyNote({ user, token, saving, setSaving }) {
   return (
     <div style={{ padding:"20px 20px 120px" }}>
       <div style={{ marginBottom:16 }}>
-        <div style={{ fontSize:13, color:C.sub, letterSpacing:2, marginBottom:8 }}>當日記錄</div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <button onClick={prevDay} style={{ width:34, height:34, borderRadius:17, background:C.card, border:`1.5px solid ${C.border}`, cursor:"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
-          <div style={{ flex:1, textAlign:"center" }}>
-            <div style={{ fontSize:16, fontFamily:"'Noto Serif TC',serif", fontWeight:700, color:C.text }}>{dateLabel}</div>
-            {!isToday && (
-              <div onClick={()=>setDate(today)} style={{ fontSize:11, color:C.accent, marginTop:3, cursor:"pointer" }}>回到今天</div>
-            )}
-          </div>
-          <button onClick={nextDay} disabled={isToday} style={{ width:34, height:34, borderRadius:17, background:C.card, border:`1.5px solid ${C.border}`, cursor:isToday?"default":"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, opacity:isToday?0.3:1 }}>›</button>
+        <div style={{ fontSize:13, color:C.sub, letterSpacing:2, marginBottom:4 }}>當日記錄</div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
+          <div style={{ fontSize:16, fontFamily:"'Noto Serif TC',serif", fontWeight:700, color:C.text, flex:1, minWidth:0 }}>{dateLabel}</div>
           <SaveDot saving={saving} />
         </div>
+      </div>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
+        <button onClick={prevDay} style={{ width:36, height:36, borderRadius:18, background:C.card, border:`1.5px solid ${C.border}`, cursor:"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
+        <input type="date" value={date} onChange={e=>setDate(toDateKey(e.target.value))}
+          style={{ flex:1, border:`1.5px solid ${C.border}`, borderRadius:12, padding:"11px 14px", fontSize:14, color:C.text, background:C.card, outline:"none", WebkitAppearance:"none", appearance:"none" }} />
+        <button onClick={nextDay} disabled={isToday} style={{ width:36, height:36, borderRadius:18, background:C.card, border:`1.5px solid ${C.border}`, cursor:isToday?"default":"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, opacity:isToday?0.3:1 }}>›</button>
       </div>
       {note === null ? <Spinner /> : (
         <>
