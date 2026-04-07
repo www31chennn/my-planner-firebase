@@ -256,10 +256,13 @@ async function handleAction(p) {
   if (action === "savePushSubscription") {
     if (!await verifyToken()) return { ok: false };
     const subscription = p.subscription;
-    if (!subscription) return { ok: false };
-    await db.collection("_users").doc(user).update({
-      pushSubscription: subscription
-    });
+    if (!subscription || !subscription.endpoint) return { ok: false };
+    const userDoc = await db.collection("_users").doc(user).get();
+    const existing = userDoc.exists ? (userDoc.data().pushSubscriptions || []) : [];
+    // 同 endpoint 就更新，沒有就新增
+    const updated = existing.filter(s => s.endpoint !== subscription.endpoint);
+    updated.push(subscription);
+    await db.collection("_users").doc(user).update({ pushSubscriptions: updated });
     return { ok: true };
   }
 

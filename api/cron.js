@@ -69,8 +69,10 @@ module.exports = async function handler(req, res) {
       const user = userDoc.id;
       const userData = userDoc.data();
 
-      // 沒有推播訂閱就跳過
-      if (!userData.pushSubscription) continue;
+      // 沒有推播訂閱就跳過（同時支援舊的單一 pushSubscription 和新的 pushSubscriptions 陣列）
+      const subscriptions = userData.pushSubscriptions
+        || (userData.pushSubscription ? [userData.pushSubscription] : []);
+      if (subscriptions.length === 0) continue;
 
       // 讀取這個使用者的倒數日清單
       const countdownDoc = await db.collection(`${user}_countdown`).doc("list").get();
@@ -87,26 +89,34 @@ module.exports = async function handler(req, res) {
       const todayItems = items.filter(item => item.notify && isToday(item));
       if (todayItems.length === 0) continue;
 
-      // 發送推播
-      const subscription = userData.pushSubscription;
+      // 發送推播給所有裝置
+      const expiredEndpoints = [];
       let userSent = 0;
-      for (const item of todayItems) {
-        try {
-          await webpush.sendNotification(
-            subscription,
-            JSON.stringify({
-              title: "my-planner",
-              body: `今天是 ${item.name}`,
-            })
-          );
-          userSent++;
-          sent++;
-        } catch (err) {
-          if (err.statusCode === 410 || err.statusCode === 404) {
-            await userDoc.ref.update({ pushSubscription: null });
+      for (const subscription of subscriptions) {
+        for (const item of todayItems) {
+          try {
+            await webpush.sendNotification(
+              subscription,
+              JSON.stringify({
+                title: "my-planner",
+                body: `今天是 ${item.name}`,
+              })
+            );
+            userSent++;
+            sent++;
+          } catch (err) {
+            if (err.statusCode === 410 || err.statusCode === 404) {
+              // 這個 subscription 已失效，記下來等等清除
+              expiredEndpoints.push(subscription.endpoint);
+            }
+            failed++;
           }
-          failed++;
         }
+      }
+      // 清除失效的 subscriptions
+      if (expiredEndpoints.length > 0) {
+        const remaining = subscriptions.filter(s => !expiredEndpoints.includes(s.endpoint));
+        await userDoc.ref.update({ pushSubscriptions: remaining });
       }
       // 記錄今天已從 server 發過通知，讓 SW 不重複發
       if (userSent > 0) {
