@@ -38,8 +38,8 @@ function getBMIStatus(bmi) {
 
 // ── 體重折線圖 ──────────────────────────────────────────────
 function WeightLineChart({ data, year, month }) {
+  const [open, setOpen] = React.useState(false);
   const daysCount = DAYS_IN_MONTH_W(month, year);
-  // 收集有資料的點
   const points = [];
   for (let d = 1; d <= daysCount; d++) {
     const key = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -60,53 +60,54 @@ function WeightLineChart({ data, year, month }) {
   function yPos(w) { return PAD.top + chartH - ((w - minW) / range) * chartH; }
 
   const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xPos(p.day)} ${yPos(p.weight)}`).join(' ');
-  // 填充區域
   const areaD = pathD + ` L ${xPos(points[points.length-1].day)} ${PAD.top + chartH} L ${xPos(points[0].day)} ${PAD.top + chartH} Z`;
-
-  // Y 軸刻度（2~3 條）
   const yTicks = [minW, ((minW + maxW) / 2), maxW].map(v => Math.round(v * 10) / 10);
 
   return (
-    <div style={{ background: C.card, borderRadius: 16, padding: '14px 16px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-      <div style={{ fontSize: 12, color: C.sub, marginBottom: 8, fontWeight: 500 }}>📈 當月趨勢</div>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', display: 'block' }}>
-        <defs>
-          <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C.accent} stopOpacity="0.18" />
-            <stop offset="100%" stopColor={C.accent} stopOpacity="0.01" />
-          </linearGradient>
-        </defs>
-        {/* Y軸參考線 */}
-        {yTicks.map((v, i) => {
-          const y = yPos(v);
-          return (
-            <g key={i}>
-              <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke={C.border} strokeWidth="1" strokeDasharray="3,3" />
-              <text x={PAD.left - 4} y={y + 4} textAnchor="end" fontSize="9" fill={C.sub}>{v}</text>
-            </g>
-          );
-        })}
-        {/* 填充區域 */}
-        <path d={areaD} fill="url(#wGrad)" />
-        {/* 折線 */}
-        <path d={pathD} fill="none" stroke={C.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        {/* 資料點 */}
-        {points.map((p, i) => (
-          <g key={i}>
-            <circle cx={xPos(p.day)} cy={yPos(p.weight)} r="3.5" fill={C.card} stroke={C.accent} strokeWidth="2" />
-            {/* 最高最低標記 */}
-            {(p.weight === Math.max(...weights) || p.weight === Math.min(...weights)) && (
-              <text x={xPos(p.day)} y={yPos(p.weight) + (p.weight === Math.min(...weights) ? 13 : -6)}
-                textAnchor="middle" fontSize="9" fill={p.weight === Math.max(...weights) ? '#D0533A' : '#4A7C59'} fontWeight="700">
-                {p.weight}
-              </text>
-            )}
-          </g>
-        ))}
-        {/* X軸月份起訖標示 */}
-        <text x={PAD.left} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>1</text>
-        <text x={W - PAD.right} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>{daysCount}</text>
-      </svg>
+    <div style={{ background: C.card, borderRadius: 16, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+      <button onClick={() => setOpen(o => !o)} style={{
+        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer',
+      }}>
+        <span style={{ fontSize: 12, color: C.sub, fontWeight: 500 }}>📈 當月趨勢</span>
+        <span style={{ fontSize: 12, color: C.sub, transition: 'transform 0.2s', display: 'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 16px 14px' }}>
+          <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', display: 'block' }}>
+            <defs>
+              <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={C.accent} stopOpacity="0.18" />
+                <stop offset="100%" stopColor={C.accent} stopOpacity="0.01" />
+              </linearGradient>
+            </defs>
+            {yTicks.map((v, i) => {
+              const y = yPos(v);
+              return (
+                <g key={i}>
+                  <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke={C.border} strokeWidth="1" strokeDasharray="3,3" />
+                  <text x={PAD.left - 4} y={y + 4} textAnchor="end" fontSize="9" fill={C.sub}>{v}</text>
+                </g>
+              );
+            })}
+            <path d={areaD} fill="url(#wGrad)" />
+            <path d={pathD} fill="none" stroke={C.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+            {points.map((p, i) => (
+              <g key={i}>
+                <circle cx={xPos(p.day)} cy={yPos(p.weight)} r="3.5" fill={C.card} stroke={C.accent} strokeWidth="2" />
+                {(p.weight === Math.max(...weights) || p.weight === Math.min(...weights)) && (
+                  <text x={xPos(p.day)} y={yPos(p.weight) + (p.weight === Math.min(...weights) ? 13 : -6)}
+                    textAnchor="middle" fontSize="9" fill={p.weight === Math.max(...weights) ? '#D0533A' : '#4A7C59'} fontWeight="700">
+                    {p.weight}
+                  </text>
+                )}
+              </g>
+            ))}
+            <text x={PAD.left} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>1</text>
+            <text x={W - PAD.right} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>{daysCount}</text>
+          </svg>
+        </div>
+      )}
     </div>
   );
 }

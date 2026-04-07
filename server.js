@@ -277,10 +277,21 @@ async function handleAction(p) {
     return doc.exists ? (doc.data().sharedToken || "") : "";
   }
 
-  // ── initUser（合併初始化，減少 roundtrip）─────────────
+  // ── initUser（_sessions 和 _users 平行讀取）─────────────
   if (action === "initUser") {
-    if (!await verifyToken()) return { ok: false };
-    const doc = await db.collection("_users").doc(user).get();
+    if (!token) return { ok: false };
+    const [sessionDoc, doc] = await Promise.all([
+      db.collection("_sessions").doc(token).get(),
+      db.collection("_users").doc(user).get(),
+    ]);
+    if (!sessionDoc.exists) return { ok: false };
+    const session = sessionDoc.data();
+    if (session.user !== user) return { ok: false };
+    if (Date.now() > session.expiresAt) {
+      await db.collection("_sessions").doc(token).delete();
+      return { ok: false };
+    }
+    db.collection("_sessions").doc(token).update({ expiresAt: Date.now() + TOKEN_TTL_MS });
     if (!doc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner" };
     const d = doc.data();
     return {

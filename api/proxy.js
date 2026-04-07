@@ -268,10 +268,24 @@ async function handleAction(p) {
     return doc.exists ? (doc.data().sharedToken || "") : "";
   }
 
-  // ── 合併初始化：一次讀取所有 _users 欄位，減少 roundtrip ──
+  // ── 合併初始化：_sessions 和 _users 平行讀取，只需一次 roundtrip ──
   if (action === "initUser") {
-    if (!await verifyToken()) return { ok: false };
-    const doc = await db.collection("_users").doc(user).get();
+    if (!token) return { ok: false };
+    // 同時發出兩個 Firestore 請求，不等第一個完成才發第二個
+    const [sessionDoc, doc] = await Promise.all([
+      db.collection("_sessions").doc(token).get(),
+      db.collection("_users").doc(user).get(),
+    ]);
+    // 驗證 session
+    if (!sessionDoc.exists) return { ok: false };
+    const session = sessionDoc.data();
+    if (session.user !== user) return { ok: false };
+    if (Date.now() > session.expiresAt) {
+      await db.collection("_sessions").doc(token).delete();
+      return { ok: false };
+    }
+    // 更新 session 到期時間（不 await，不阻塞回應）
+    db.collection("_sessions").doc(token).update({ expiresAt: Date.now() + TOKEN_TTL_MS });
     if (!doc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner" };
     const d = doc.data();
     return {
