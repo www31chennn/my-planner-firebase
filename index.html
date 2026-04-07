@@ -317,22 +317,39 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
           {/* 分隔線 */}
           <div style={{ height:1, background:C.border }} />
 
-          {/* 模組管理 */}
+          {/* 模組管理（含預設頁設定）*/}
           <div>
-            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:10 }}>顯示模組</div>
+            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>顯示模組</div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:10 }}>點 🏠 設為開啟 App 時的預設頁面</div>
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {MODULES.map(m => {
                 const isEnabled = enabledModules.includes(m.id);
                 const isPlanner = m.id === "planner";
+                const isDefault = selectedDefault === m.id;
                 return (
-                  <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                    {/* 預設頁按鈕 */}
+                    <button onClick={async () => {
+                      if (!isEnabled) return;
+                      setSelectedDefault(m.id);
+                      localStorage.setItem("defaultModule_"+user, m.id);
+                      onDefaultModuleChange && onDefaultModuleChange(m.id);
+                      await apiCall({ action:"saveDefaultModule", user, token, value:m.id });
+                      setMsg("預設頁面已更新！"); setTimeout(()=>setMsg(""), 2000);
+                    }} title="設為預設頁面" style={{
+                      background:"none", border:"none", cursor: isEnabled ? "pointer" : "default",
+                      fontSize:15, opacity: isEnabled ? 1 : 0.2, padding:"2px 4px", flexShrink:0,
+                      filter: isDefault ? "none" : "grayscale(1)",
+                    }}>🏠</button>
+                    {/* 名稱 */}
+                    <div style={{ display:"flex", alignItems:"center", gap:8, flex:1 }}>
                       <span style={{ fontSize:18 }}>{m.emoji}</span>
                       <span style={{ fontSize:14, color: isPlanner ? C.sub : C.text }}>{m.label}</span>
-                      {isPlanner && <span style={{ fontSize:11, color:C.sub }}>（必要）</span>}
+                      {isDefault && isEnabled && <span style={{ fontSize:10, color:C.accent, background:C.accentLight, padding:"1px 6px", borderRadius:6, fontWeight:600 }}>預設</span>}
                     </div>
+                    {/* 顯示開關 */}
                     <div onClick={() => {
-                      if (isPlanner) return; // 計畫本不能關
+                      if (isPlanner) return;
                       const next = isEnabled
                         ? enabledModules.filter(id => id !== m.id)
                         : [...enabledModules, m.id];
@@ -348,38 +365,6 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
                         boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 分隔線 */}
-          <div style={{ height:1, background:C.border }} />
-
-          {/* 預設開啟頁面 */}
-          <div>
-            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>🏠 開啟 App 預設頁面</div>
-            <div style={{ fontSize:12, color:C.sub, marginBottom:10 }}>每次開啟 App 時，直接跳到這個分頁</div>
-            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-              {MODULES.filter(m => enabledModules.includes(m.id)).map(m => {
-                const isSelected = selectedDefault === m.id;
-                return (
-                  <button key={m.id} onClick={async () => {
-                    setSelectedDefault(m.id);
-                    localStorage.setItem("defaultModule_"+user, m.id);
-                    onDefaultModuleChange && onDefaultModuleChange(m.id);
-                    await apiCall({ action:"saveDefaultModule", user, token, value:m.id });
-                    setMsg("預設頁面已更新！"); setTimeout(()=>setMsg(""), 2000);
-                  }} style={{
-                    display:"flex", alignItems:"center", gap:10,
-                    padding:"10px 14px", borderRadius:12, border:`1.5px solid ${isSelected ? C.accent : C.border}`,
-                    background: isSelected ? C.accentLight : C.bg,
-                    cursor:"pointer", textAlign:"left", transition:"all 0.15s"
-                  }}>
-                    <span style={{ fontSize:20 }}>{m.emoji}</span>
-                    <span style={{ fontSize:14, fontWeight: isSelected ? 600 : 400, color: isSelected ? C.accent : C.text, flex:1 }}>{m.label}</span>
-                    {isSelected && <span style={{ fontSize:12, color:C.accent, fontWeight:600 }}>✓</span>}
-                  </button>
                 );
               })}
             </div>
@@ -408,6 +393,7 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
               <div>
                 <div style={{ fontSize:12, color:C.sub, marginBottom:7 }}>輸入夥伴的帳號名稱</div>
                 <div style={{ display:"flex", gap:8 }}>
+
                   <input value={partnerInput} onChange={e=>setPartnerInput(e.target.value)}
                     placeholder="夥伴帳號" style={inp} />
                   <button onClick={setPartnerAction} disabled={partnerSaving}
@@ -460,11 +446,14 @@ function MainShell({ user, token, displayName: displayName_prop }) {
 
   useEffect(()=>{
     (async () => {
+    const t0 = performance.now();
+    console.log("[載入] 開始");
     const now = new Date();
     const nowMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
     // 一次 API 呼叫取得所有使用者設定，大幅減少 roundtrip
     const init = await apiCall({ action:"initUser", user, token });
+    console.log(`[載入] initUser 完成，耗時 ${Math.round(performance.now()-t0)} ms`, init);
     const partner = (init?.budgetPartner && String(init.budgetPartner).trim() && String(init.budgetPartner) !== "null") ? String(init.budgetPartner).trim() : "";
     const sharedToken = (init?.sharedToken && String(init.sharedToken).trim() && String(init.sharedToken) !== "null") ? String(init.sharedToken).trim() : "";
 
@@ -500,6 +489,7 @@ function MainShell({ user, token, displayName: displayName_prop }) {
         });
     }
     setAppLoading(false);
+    console.log(`[載入] 完成，總耗時 ${Math.round(performance.now()-t0)} ms`);
 
     // 請求通知權限並訂閱推播
     if ("Notification" in window && "serviceWorker" in navigator) {
