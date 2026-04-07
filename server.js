@@ -277,6 +277,31 @@ async function handleAction(p) {
     return doc.exists ? (doc.data().sharedToken || "") : "";
   }
 
+  // ── initUser（合併初始化，減少 roundtrip）─────────────
+  if (action === "initUser") {
+    if (!await verifyToken()) return { ok: false };
+    const doc = await db.collection("_users").doc(user).get();
+    if (!doc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner" };
+    const d = doc.data();
+    return {
+      ok: true,
+      plannerName: d.plannerName || "",
+      avatar: d.avatar || "👤",
+      enabledModules: d.enabledModules || ["planner"],
+      budgetPartner: d.budgetPartner || "",
+      sharedToken: d.sharedToken || "",
+      loginTheme: d.loginTheme || null,
+      defaultModule: d.defaultModule || "planner",
+    };
+  }
+
+  // ── saveDefaultModule ─────────────────────────────────
+  if (action === "saveDefaultModule") {
+    if (!await verifyToken()) return { ok: false };
+    await db.collection("_users").doc(user).update({ defaultModule: value || "planner" });
+    return { ok: true };
+  }
+
   // ── setPartner ────────────────────────────────────────
   if (action === "setPartner") {
     if (!await verifyToken()) return { ok: false, error: "驗證失敗" };
