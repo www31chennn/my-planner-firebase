@@ -430,6 +430,7 @@ function MainShell({ user, token, displayName: displayName_prop }) {
   const [appLoading, setAppLoading] = useState(true);
   const [displayName, setDisplayName] = useState(displayName_prop);
   const shellTouchStart = useRef(null);
+  const mountedModules = useRef(new Set());
 
   function handleShellTouchStart(e) {
     shellTouchStart.current = e.touches[0].clientX;
@@ -564,20 +565,26 @@ function MainShell({ user, token, displayName: displayName_prop }) {
       </div>
 
       <div style={{ flex:1, overflow:"hidden", position:"relative" }}>
-        {MODULES.map(m => (
-          <div key={m.id} style={{ position:"absolute", inset:0, visibility:currentModule===m.id?"visible":"hidden", pointerEvents:currentModule===m.id?"auto":"none" }}>
-            <m.component
-              user={user}
-              token={token}
-              displayName={displayName}
-              saving={saving}
-              setSaving={setSaving}
-              plannerName={plannerName}
-              onOpenSettings={()=>setShowSettings(true)}
-              partnerVersion={partnerVersion}
-            />
-          </div>
-        ))}
+        {MODULES.map(m => {
+          // 只在第一次切換到該模組時才 mount，之後保持 mount 避免資料重載
+          // mountedModules 用 ref 追蹤，不觸發 re-render
+          if (!mountedModules.current.has(m.id) && currentModule !== m.id) return null;
+          mountedModules.current.add(m.id);
+          return (
+            <div key={m.id} style={{ position:"absolute", inset:0, visibility:currentModule===m.id?"visible":"hidden", pointerEvents:currentModule===m.id?"auto":"none" }}>
+              <m.component
+                user={user}
+                token={token}
+                displayName={displayName}
+                saving={saving}
+                setSaving={setSaving}
+                plannerName={plannerName}
+                onOpenSettings={()=>setShowSettings(true)}
+                partnerVersion={partnerVersion}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {showMenu && (
