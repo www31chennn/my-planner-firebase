@@ -674,14 +674,6 @@ async function prefetchModuleData(user, token, partner, sharedToken, moduleId, n
 
   const fetches = [];
 
-  // countdown 每次都預載（背景通知需要，且資料量小）
-  if (!cacheHas(user, "countdown", "list")) {
-    fetches.push(
-      apiCall({action:"readOne",user,sheet:"countdown",key:"list",token})
-        .then(v => { cacheSet(user, "countdown", "list", v ? (typeof v==="string"?v:JSON.stringify(v)) : ""); })
-    );
-  }
-
   if (moduleId === "planner") {
     if (!cacheHas(user,"goals",String(thisYear)))
       fetches.push(apiCall({action:"readOne",user,sheet:"goals",key:String(thisYear),token}).then(v=>{cacheSet(user,"goals",String(thisYear),v||"");}));
@@ -705,8 +697,9 @@ async function prefetchModuleData(user, token, partner, sharedToken, moduleId, n
   } else if (moduleId === "weight") {
     if (!cacheHas(user,"weight",weightKey))
       fetches.push(apiCall({action:"readOne",user,sheet:"weight",key:weightKey,token}).then(v=>{cacheSet(user,"weight",weightKey,v||"");}));
-    if (!cacheHas(user,"settings","height"))
-      fetches.push(apiCall({action:"getHeight",user,token}).then(v=>{cacheSet(user,"settings","height",v||"");}));
+  } else if (moduleId === "countdown") {
+    if (!cacheHas(user,"countdown","list"))
+      fetches.push(apiCall({action:"readOne",user,sheet:"countdown",key:"list",token}).then(v=>{cacheSet(user,"countdown","list",v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
   }
 
   await Promise.all(fetches);
