@@ -181,6 +181,24 @@ async function handleAction(p) {
     return { ok: true };
   }
 
+  // ── changePassword ────────────────────────────────────
+  if (action === "changePassword") {
+    if (!await verifyToken()) return { ok: false, error: "驗證失敗" };
+    const { oldPassword, newPassword } = p;
+    if (!oldPassword || !newPassword) return { ok: false, error: "請填寫舊密碼和新密碼" };
+    if (newPassword.length < 6) return { ok: false, error: "新密碼至少需要 6 個字元" };
+    const ref = db.collection("_users").doc(user);
+    const doc = await ref.get();
+    if (!doc.exists) return { ok: false, error: "帳號不存在" };
+    const data = doc.data();
+    const isValid = await verifyPassword(oldPassword, data);
+    if (!isValid) return { ok: false, error: "舊密碼錯誤" };
+    const newSalt = generateSalt();
+    const newHash = await pbkdf2Hash(newPassword, newSalt);
+    await ref.update({ passwordHash: newHash, salt: newSalt, password: null });
+    return { ok: true };
+  }
+
   // ── updateName ────────────────────────────────────────
   if (action === "updateName") {
     if (!await verifyToken()) return { ok: false };

@@ -7,6 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="計畫本" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+  <link rel="icon" type="image/png" href="/icon.png" />
   <title>計畫本</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
   <script>
@@ -221,6 +224,26 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
   const [saving, setSaving] = useState(false);
   const [selectedDefault, setSelectedDefault] = useState(defaultModule || "planner");
 
+  // 改密碼
+  const [oldPwd, setOldPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [pwdMsg, setPwdMsg] = useState("");
+  const [pwdSaving, setPwdSaving] = useState(false);
+
+  async function changePassword() {
+    if (!oldPwd || !newPwd) { setPwdMsg("請填寫舊密碼和新密碼"); return; }
+    setPwdSaving(true); setPwdMsg("");
+    const res = await apiCall({ action:"changePassword", user, token, oldPassword:oldPwd, newPassword:newPwd });
+    setPwdSaving(false);
+    if (res?.ok) {
+      setOldPwd(""); setNewPwd("");
+      setPwdMsg("✅ 密碼已更新！");
+    } else {
+      setPwdMsg("❌ " + (res?.error || "更新失敗"));
+    }
+    setTimeout(() => setPwdMsg(""), 3000);
+  }
+
   // 記帳夥伴
   const [partner, setPartner] = useState(window._CACHE?.[`${user}:budget_partner:partner`] || "");
   const [partnerInput, setPartnerInput] = useState("");
@@ -313,6 +336,22 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
           </div>
 
           {msg && <div style={{ fontSize:13, color:C.accent, textAlign:"center" }}>{msg}</div>}
+
+          {/* 改密碼 */}
+          <div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:7 }}>變更密碼</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <input type="password" value={oldPwd} onChange={e=>setOldPwd(e.target.value)}
+                placeholder="舊密碼" style={inp} />
+              <div style={{ display:"flex", gap:8 }}>
+                <input type="password" value={newPwd} onChange={e=>setNewPwd(e.target.value)}
+                  placeholder="新密碼（至少 6 碼）" style={inp} />
+                <button onClick={changePassword} disabled={pwdSaving}
+                  style={{ ...btn, opacity:pwdSaving?0.7:1 }}>{pwdSaving?"更新中":"更新"}</button>
+              </div>
+            </div>
+            {pwdMsg && <div style={{ fontSize:13, marginTop:6, color: pwdMsg.startsWith("❌") ? C.red : C.accent }}>{pwdMsg}</div>}
+          </div>
 
           {/* 分隔線 */}
           <div style={{ height:1, background:C.border }} />

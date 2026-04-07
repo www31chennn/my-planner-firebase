@@ -9,7 +9,7 @@ const API = (() => {
 })();
 
 // 敏感欄位走 POST body，其餘走 query string
-const SENSITIVE_KEYS = new Set(["token", "sharedToken", "apiUser", "password", "value", "displayName", "subscription"]);
+const SENSITIVE_KEYS = new Set(["token", "sharedToken", "apiUser", "password", "oldPassword", "newPassword", "value", "displayName", "subscription"]);
 
 async function apiCall(params) {
   const t = performance.now();
