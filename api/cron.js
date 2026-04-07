@@ -1,6 +1,6 @@
 // ── api/cron.js ────────────────────────────────────────────
-// Vercel Cron Job：每天早上 9 點（UTC+8）發送紀念日推播通知
-// UTC 1:00 = 台灣時間 9:00
+// Vercel Cron Job：每天中午 12 點（UTC+8）發送紀念日推播通知
+// UTC 4:00 = 台灣時間 12:00
 
 const webpush = require("web-push");
 const admin = require("firebase-admin");
