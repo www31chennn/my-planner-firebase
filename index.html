@@ -471,11 +471,19 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     if (Array.isArray(init?.enabledModules) && init.enabledModules.length > 0) {
       setEnabledModules(init.enabledModules);
     }
-    if (init?.defaultModule) {
+    if (init?.defaultModule && init.defaultModule !== "planner") {
       const dm = init.defaultModule;
       localStorage.setItem("defaultModule_"+user, dm);
-      // 只有在沒有 localStorage 暫存時才切換（避免蓋掉使用者手動切換的頁面）
-      if (!storedDefault) setCurrentModule(dm);
+      setDefaultModule(dm);
+      // localStorage 沒有值時（被清空），Firestore 的設定才是主要來源
+      if (!storedDefault) {
+        setCurrentModule(dm);
+        // 同時修正 mountedModules，讓正確的預設模組先 mount
+        if (!mountedModules.current.has(dm)) {
+          mountedModules.current.clear();
+          mountedModules.current.add(dm);
+        }
+      }
     }
 
     window._CACHE = window._CACHE || {};
