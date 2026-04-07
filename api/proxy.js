@@ -268,7 +268,7 @@ async function handleAction(p) {
     return doc.exists ? (doc.data().sharedToken || "") : "";
   }
 
-  // ── 合併初始化：_sessions 和 _users 平行讀取，只需一次 roundtrip ──
+  // ── 合併初始化：_sessions 和 _users 平行讀取，不阻塞畫面顯示 ──
   if (action === "initUser") {
     if (!token) return { ok: false };
     const [sessionDoc, userDoc, countdownDoc] = await Promise.all([

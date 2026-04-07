@@ -277,7 +277,7 @@ async function handleAction(p) {
     return doc.exists ? (doc.data().sharedToken || "") : "";
   }
 
-  // ── initUser（_sessions 和 _users 平行讀取）─────────────
+  // ── initUser（_sessions 和 _users + countdown 平行讀取）─────────────
   if (action === "initUser") {
     if (!token) return { ok: false };
     const [sessionDoc, userDoc, countdownDoc] = await Promise.all([
