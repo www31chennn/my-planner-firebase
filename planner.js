@@ -340,19 +340,35 @@ function DailyNote({ user, token, saving, setSaving }) {
     }, 1500);
   }
 
+  function prevDay() {
+    const d = new Date(date+"T00:00:00");
+    d.setDate(d.getDate() - 1);
+    setDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+  }
+  function nextDay() {
+    const d = new Date(date+"T00:00:00");
+    d.setDate(d.getDate() + 1);
+    setDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+  }
+  const isToday = date === today;
   const dateLabel = new Date(date+"T00:00:00").toLocaleDateString("zh-TW",{month:"long",day:"numeric",weekday:"long"});
 
   return (
     <div style={{ padding:"20px 20px 120px" }}>
       <div style={{ marginBottom:16 }}>
-        <div style={{ fontSize:13, color:C.sub, letterSpacing:2, marginBottom:4 }}>當日記錄</div>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
-          <div style={{ fontSize:16, fontFamily:"'Noto Serif TC',serif", fontWeight:700, color:C.text, flex:1, minWidth:0 }}>{dateLabel}</div>
+        <div style={{ fontSize:13, color:C.sub, letterSpacing:2, marginBottom:8 }}>當日記錄</div>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <button onClick={prevDay} style={{ width:34, height:34, borderRadius:17, background:C.card, border:`1.5px solid ${C.border}`, cursor:"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
+          <div style={{ flex:1, textAlign:"center" }}>
+            <div style={{ fontSize:16, fontFamily:"'Noto Serif TC',serif", fontWeight:700, color:C.text }}>{dateLabel}</div>
+            {!isToday && (
+              <div onClick={()=>setDate(today)} style={{ fontSize:11, color:C.accent, marginTop:3, cursor:"pointer" }}>回到今天</div>
+            )}
+          </div>
+          <button onClick={nextDay} disabled={isToday} style={{ width:34, height:34, borderRadius:17, background:C.card, border:`1.5px solid ${C.border}`, cursor:isToday?"default":"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, opacity:isToday?0.3:1 }}>›</button>
           <SaveDot saving={saving} />
         </div>
       </div>
-      <input type="date" value={date} onChange={e=>setDate(toDateKey(e.target.value))}
-        style={{ width:"100%", maxWidth:"100%", border:`1.5px solid ${C.border}`, borderRadius:12, padding:"11px 14px", fontSize:14, color:C.text, background:C.card, outline:"none", marginBottom:16, display:"block", WebkitAppearance:"none", appearance:"none" }} />
       {note === null ? <Spinner /> : (
         <>
           {!note && <div style={{ textAlign:"center", padding:"20px 0 12px", color:C.sub, fontSize:14 }}>這天還沒有記錄</div>}
