@@ -310,12 +310,14 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
 
   return (
     <div className="fade-in" style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.3)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ width:"100%", maxWidth:430, margin:"0 auto", background:C.card, borderRadius:"20px 20px 0 0", padding:"24px 20px 48px", maxHeight:"80vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
+      <div style={{ width:"100%", maxWidth:430, margin:"0 auto", background:C.card, borderRadius:"20px 20px 0 0", maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
+        {/* 固定標題列 */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"20px 20px 16px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
           <div style={{ fontSize:18, fontWeight:700, color:C.text }}>設定</div>
           <button onClick={onClose} style={{ background:C.border, border:"none", borderRadius:10, width:32, height:32, cursor:"pointer", fontSize:16 }}>✕</button>
         </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+        {/* 可滾動內容 */}
+        <div style={{ overflowY:"auto", padding:"20px 20px 48px", display:"flex", flexDirection:"column", gap:20 }}>
 
           {/* 計畫本名稱 */}
           <div>
@@ -342,10 +344,10 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
             <div style={{ fontSize:12, color:C.sub, marginBottom:7 }}>變更密碼</div>
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               <input type="password" value={oldPwd} onChange={e=>setOldPwd(e.target.value)}
-                placeholder="舊密碼" style={inp} />
+                placeholder="舊密碼" autoComplete="current-password" style={inp} />
               <div style={{ display:"flex", gap:8 }}>
                 <input type="password" value={newPwd} onChange={e=>setNewPwd(e.target.value)}
-                  placeholder="新密碼（至少 6 碼）" style={inp} />
+                  placeholder="新密碼（至少 6 碼）" autoComplete="new-password" style={inp} />
                 <button onClick={changePassword} disabled={pwdSaving}
                   style={{ ...btn, opacity:pwdSaving?0.7:1 }}>{pwdSaving?"更新中":"更新"}</button>
               </div>
@@ -359,7 +361,7 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
           {/* 模組管理（含預設頁設定）*/}
           <div>
             <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>顯示模組</div>
-            <div style={{ fontSize:12, color:C.sub, marginBottom:10 }}>點 🏠 設為開啟 App 時的預設頁面</div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:10 }}>點左側圓點設為開啟 App 時的預設頁面</div>
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {MODULES.map(m => {
                 const isEnabled = enabledModules.includes(m.id);
@@ -367,19 +369,15 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
                 const isDefault = selectedDefault === m.id;
                 return (
                   <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
-                    {/* 預設頁按鈕 */}
-                    <button onClick={async () => {
+                    {/* 預設頁 radio dot */}
+                    <div onClick={async () => {
                       if (!isEnabled) return;
                       setSelectedDefault(m.id);
                       localStorage.setItem("defaultModule_"+user, m.id);
                       onDefaultModuleChange && onDefaultModuleChange(m.id);
                       await apiCall({ action:"saveDefaultModule", user, token, value:m.id });
                       setMsg("預設頁面已更新！"); setTimeout(()=>setMsg(""), 2000);
-                    }} title="設為預設頁面" style={{
-                      background:"none", border:"none", cursor: isEnabled ? "pointer" : "default",
-                      fontSize:15, opacity: isEnabled ? 1 : 0.2, padding:"2px 4px", flexShrink:0,
-                      filter: isDefault ? "none" : "grayscale(1)",
-                    }}>🏠</button>
+                    }} style={{ width:18, height:18, borderRadius:9, border:`2px solid ${isDefault && isEnabled ? C.accent : C.border}`, background: isDefault && isEnabled ? C.accent : "transparent", cursor: isEnabled ? "pointer" : "default", flexShrink:0, opacity: isEnabled ? 1 : 0.25, transition:"all 0.15s" }} />
                     {/* 名稱 */}
                     <div style={{ display:"flex", alignItems:"center", gap:8, flex:1 }}>
                       <span style={{ fontSize:18 }}>{m.emoji}</span>
