@@ -178,7 +178,7 @@ function WeightApp({ user, token, saving, setSaving }) {
   const [showHeightInput, setShowHeightInput] = useState(false);
   const [heightInput, setHeightInput] = useState("");
 
-  // 載入身高（用快取避免閃爍）
+  // 載入身高（initUser 已存進 cache，直接讀取不打 API）
   useEffect(()=>{
     const cachedHeight = cacheHas(user, "settings", "height") ? cacheGet(user, "settings", "height") : null;
     if (cachedHeight !== null) {
@@ -186,18 +186,7 @@ function WeightApp({ user, token, saving, setSaving }) {
         setHeight(parseFloat(cachedHeight));
         setHeightInput(String(cachedHeight));
       }
-      return;
     }
-    apiCall({ action:"getHeight", user, token }).then(val => {
-      if (val && String(val).trim() && String(val) !== "null") {
-        const h = String(val).trim();
-        setHeight(parseFloat(h));
-        setHeightInput(h);
-        cacheSet(user, "settings", "height", h);
-      } else {
-        cacheSet(user, "settings", "height", "");
-      }
-    });
   }, []);
 
   useEffect(()=>{

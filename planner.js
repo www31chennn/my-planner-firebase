@@ -149,26 +149,23 @@ function MonthPlanner({ user, token, saving, setSaving, year }) {
       return;
     }
 
-    // 快取沒有，改用 12 個 readOne 平行請求，只拿當年資料
+    // 用 readAll + prefix 只撈當年資料，一次請求搞定
     setListLoaded(false);
-    const keys = Array.from({length:12}, (_,i) => `${year}_${i+1}`);
-    Promise.all(
-      keys.map(key => {
-        if (cacheHas(user, "month", key)) {
-          return Promise.resolve([key, cacheGet(user, "month", key)]);
-        }
-        return apiCall({ action:"readOne", user, sheet:"month", key, token })
-          .then(val => {
-            const str = typeof val === "string" ? val : JSON.stringify(val || {});
-            cacheSet(user, "month", key, str);
-            return [key, str];
-          });
-      })
-    ).then(results => {
+    apiCall({ action:"readAll", user, sheet:"month", prefix:`${year}_`, token }).then(rows => {
       const newCache = {};
-      results.forEach(([key, str]) => {
-        try { newCache[key] = str ? JSON.parse(str) : {}; } catch { newCache[key] = {}; }
-      });
+      for (let m = 1; m <= 12; m++) newCache[`${year}_${m}`] = {};
+      if (Array.isArray(rows)) {
+        rows.forEach(r => {
+          if (!r[0]) return;
+          try { newCache[String(r[0])] = JSON.parse(r[1]); } catch { newCache[String(r[0])] = {}; }
+          cacheUpdate(user, "month", String(r[0]), r[1]||"");
+        });
+      }
+      // 空白月份也存進快取，下次不再打 API
+      for (let m = 1; m <= 12; m++) {
+        const key = `${year}_${m}`;
+        if (!cacheHas(user, "month", key)) cacheSet(user, "month", key, "");
+      }
       setMonthCache(p => ({ ...p, ...newCache }));
       setListLoaded(true);
     });

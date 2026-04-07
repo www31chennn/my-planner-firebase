@@ -489,7 +489,18 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     window._CACHE = window._CACHE || {};
     window._CACHE[`${user}:budget_partner:partner`] = partner;
     window._SHARED_TOKEN = sharedToken;
-    window._API_USER = user;  // 供 _shared 請求驗證用
+    window._API_USER = user;
+
+    // height 和 countdown 直接存進 cache，weight.js 和 countdown.js 就不用再打 API
+    if (init?.height !== undefined) {
+      cacheSet(user, "settings", "height", String(init.height));
+    }
+    if (init?.countdown !== null && init?.countdown !== undefined) {
+      const countdownStr = typeof init.countdown === "string" ? init.countdown : JSON.stringify(init.countdown);
+      cacheSet(user, "countdown", "list", countdownStr);
+    } else {
+      cacheSet(user, "countdown", "list", ""); // 沒資料也存空字串，避免模組 mount 後再打一次
+    }
 
     // 預載 partner 的記帳（有夥伴且有 sharedToken 才需要）
     if (partner && sharedToken) {
@@ -520,11 +531,10 @@ function MainShell({ user, token, displayName: displayName_prop }) {
         const cache = await caches.open("my-planner-v1");
         await cache.put("/sw-session", new Response(JSON.stringify({ user, token })));
 
-        // countdown 資料寫進 SW cache
-        const countdownVal = await apiCall({ action:"readOne", user, sheet:"countdown", key:"list", token });
-        if (countdownVal) {
-          const items = typeof countdownVal === "string" ? countdownVal : JSON.stringify(countdownVal);
-          await cache.put("/sw-countdown", new Response(items));
+        // countdown 資料寫進 SW cache（直接用 initUser 已拿到的 cache，不重複打 API）
+        const countdownCached = cacheGet(user, "countdown", "list");
+        if (countdownCached) {
+          await cache.put("/sw-countdown", new Response(countdownCached));
         }
 
         // 訂閱推播（VAPID）

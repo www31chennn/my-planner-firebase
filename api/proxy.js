@@ -271,12 +271,11 @@ async function handleAction(p) {
   // ── 合併初始化：_sessions 和 _users 平行讀取，只需一次 roundtrip ──
   if (action === "initUser") {
     if (!token) return { ok: false };
-    // 同時發出兩個 Firestore 請求，不等第一個完成才發第二個
-    const [sessionDoc, doc] = await Promise.all([
+    const [sessionDoc, userDoc, countdownDoc] = await Promise.all([
       db.collection("_sessions").doc(token).get(),
       db.collection("_users").doc(user).get(),
+      db.collection(`${user}_countdown`).doc("list").get(),
     ]);
-    // 驗證 session
     if (!sessionDoc.exists) return { ok: false };
     const session = sessionDoc.data();
     if (session.user !== user) return { ok: false };
@@ -284,10 +283,9 @@ async function handleAction(p) {
       await db.collection("_sessions").doc(token).delete();
       return { ok: false };
     }
-    // 更新 session 到期時間（不 await，不阻塞回應）
     db.collection("_sessions").doc(token).update({ expiresAt: Date.now() + TOKEN_TTL_MS });
-    if (!doc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner" };
-    const d = doc.data();
+    if (!userDoc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner", height: "", countdown: null };
+    const d = userDoc.data();
     return {
       ok: true,
       plannerName: d.plannerName || "",
@@ -297,6 +295,8 @@ async function handleAction(p) {
       sharedToken: d.sharedToken || "",
       loginTheme: d.loginTheme || null,
       defaultModule: d.defaultModule || "planner",
+      height: d.height || "",
+      countdown: countdownDoc.exists ? countdownDoc.data().value : null,
     };
   }
 
@@ -389,7 +389,13 @@ async function handleAction(p) {
 
   if (action === "readAll") {
     if (!await verifyToken()) return [];
-    const snapshot = await db.collection(collectionName).get();
+    const prefix = p.prefix || "";
+    let query = db.collection(collectionName);
+    if (prefix) {
+      // Firestore 用 >= prefix 且 < prefix + "\uf8ff" 來模擬前綴查詢
+      query = query.where("__name__", ">=", prefix).where("__name__", "<=", prefix + "\uf8ff");
+    }
+    const snapshot = await query.get();
     if (snapshot.empty) return [];
     return snapshot.docs.map(doc => [doc.id, doc.data().value]);
   }

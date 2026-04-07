@@ -280,9 +280,10 @@ async function handleAction(p) {
   // ── initUser（_sessions 和 _users 平行讀取）─────────────
   if (action === "initUser") {
     if (!token) return { ok: false };
-    const [sessionDoc, doc] = await Promise.all([
+    const [sessionDoc, userDoc, countdownDoc] = await Promise.all([
       db.collection("_sessions").doc(token).get(),
       db.collection("_users").doc(user).get(),
+      db.collection(`${user}_countdown`).doc("list").get(),
     ]);
     if (!sessionDoc.exists) return { ok: false };
     const session = sessionDoc.data();
@@ -292,8 +293,8 @@ async function handleAction(p) {
       return { ok: false };
     }
     db.collection("_sessions").doc(token).update({ expiresAt: Date.now() + TOKEN_TTL_MS });
-    if (!doc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner" };
-    const d = doc.data();
+    if (!userDoc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner", height: "", countdown: null };
+    const d = userDoc.data();
     return {
       ok: true,
       plannerName: d.plannerName || "",
@@ -303,6 +304,8 @@ async function handleAction(p) {
       sharedToken: d.sharedToken || "",
       loginTheme: d.loginTheme || null,
       defaultModule: d.defaultModule || "planner",
+      height: d.height || "",
+      countdown: countdownDoc.exists ? countdownDoc.data().value : null,
     };
   }
 
@@ -410,7 +413,12 @@ async function handleAction(p) {
 
   if (action === "readAll") {
     if (!await verifyToken()) return [];
-    const snapshot = await db.collection(collectionName).get();
+    const prefix = p.prefix || "";
+    let query = db.collection(collectionName);
+    if (prefix) {
+      query = query.where("__name__", ">=", prefix).where("__name__", "<=", prefix + "\uf8ff");
+    }
+    const snapshot = await query.get();
     if (snapshot.empty) return [];
     return snapshot.docs.map(doc => [doc.id, doc.data().value]);
   }
