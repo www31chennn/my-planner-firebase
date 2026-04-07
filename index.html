@@ -427,10 +427,11 @@ function MainShell({ user, token, displayName: displayName_prop }) {
   // 用 partnerVersion 讓 BudgetApp 知道夥伴關係有變，強制重新讀取
   const [partnerVersion, setPartnerVersion] = useState(0);
   const [enabledModules, setEnabledModules] = useState(["planner"]);
+  const [mountVersion, setMountVersion] = useState(0); // 控制背景模組分批 mount
   const [appLoading, setAppLoading] = useState(true);
   const [displayName, setDisplayName] = useState(displayName_prop);
   const shellTouchStart = useRef(null);
-  const mountedModules = useRef(new Set());
+  const mountedModules = useRef(new Set([storedDefault || "planner"]));
 
   function handleShellTouchStart(e) {
     shellTouchStart.current = e.touches[0].clientX;
@@ -491,6 +492,15 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     }
     setAppLoading(false);
     console.log(`[載入] 完成，總耗時 ${Math.round(performance.now()-t0)} ms`);
+
+    // 預設模組已顯示，背景分批 mount 其他模組（每隔 800ms 一個，避免同時打爆 API）
+    const otherModules = MODULES.filter(m => !mountedModules.current.has(m.id));
+    otherModules.forEach((m, i) => {
+      setTimeout(() => {
+        mountedModules.current.add(m.id);
+        setMountVersion(v => v + 1); // 觸發 re-render 讓新模組加入
+      }, (i + 1) * 800);
+    });
 
     // 請求通知權限並訂閱推播
     if ("Notification" in window && "serviceWorker" in navigator) {
@@ -566,10 +576,8 @@ function MainShell({ user, token, displayName: displayName_prop }) {
 
       <div style={{ flex:1, overflow:"hidden", position:"relative" }}>
         {MODULES.map(m => {
-          // 只在第一次切換到該模組時才 mount，之後保持 mount 避免資料重載
-          // mountedModules 用 ref 追蹤，不觸發 re-render
-          if (!mountedModules.current.has(m.id) && currentModule !== m.id) return null;
-          mountedModules.current.add(m.id);
+          // 預設模組立即 mount；其他模組等 mountedModules 裡有才 mount（背景載入後加入）
+          if (!mountedModules.current.has(m.id)) return null;
           return (
             <div key={m.id} style={{ position:"absolute", inset:0, visibility:currentModule===m.id?"visible":"hidden", pointerEvents:currentModule===m.id?"auto":"none" }}>
               <m.component
@@ -596,8 +604,12 @@ function MainShell({ user, token, displayName: displayName_prop }) {
           enabledModules={enabledModules}
           onSwitch={id => {
             setCurrentModule(id);
-            // 如果切換到已停用的模組，改去計畫本
             if (!enabledModules.includes(id)) setCurrentModule("planner");
+            // 如果背景還沒 mount 到這個模組，立即 mount
+            if (!mountedModules.current.has(id)) {
+              mountedModules.current.add(id);
+              setMountVersion(v => v + 1);
+            }
           }}
           onSettings={()=>setShowSettings(true)}
           onLogout={handleLogout}
