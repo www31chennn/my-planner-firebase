@@ -47,13 +47,6 @@ self.addEventListener("periodicsync", e => {
   }
 });
 
-// ── 背景 fetch（讓 SW 可以呼叫 API）──────────────────────
-self.addEventListener("message", e => {
-  if (e.data?.type === "CHECK_COUNTDOWNS") {
-    checkCountdowns();
-  }
-});
-
 async function checkCountdowns() {
   // 確認有通知權限才繼續
   if (Notification.permission !== "granted") return;

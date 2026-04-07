@@ -511,19 +511,6 @@ function MainShell({ user, token, displayName: displayName_prop }) {
           } catch(e) {
             console.log("推播訂閱失敗:", e);
           }
-
-          // 檢查 server 今天是否已發過通知，若是則告知 SW 不要重複發
-          const sentDateVal = await apiCall({ action:"getNotificationSentDate", user, token });
-          const today = new Date();
-          const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
-          if (sentDateVal === todayStr) {
-            // server 今天已發過，寫進 SW cache 防止重複
-            const cache = await caches.open("my-planner-v1");
-            await cache.put("/sw-sent-date", new Response(todayStr));
-          } else {
-            // server 今天還沒發，讓 SW 檢查（處理 Cron 還沒跑的情況）
-            reg.active?.postMessage({ type: "CHECK_COUNTDOWNS" });
-          }
         }
       });
     }
