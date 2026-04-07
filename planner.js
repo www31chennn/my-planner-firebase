@@ -138,7 +138,6 @@ function MonthPlanner({ user, token, saving, setSaving, year }) {
       .every(m => cacheHas(user, "month", `${year}_${m}`));
 
     if (allCached) {
-      // 快取都有，直接從快取建立 monthCache
       const newCache = {};
       for (let m = 1; m <= 12; m++) {
         const key = `${year}_${m}`;
@@ -150,24 +149,26 @@ function MonthPlanner({ user, token, saving, setSaving, year }) {
       return;
     }
 
-    // 快取沒有，打 API
+    // 快取沒有，改用 12 個 readOne 平行請求，只拿當年資料
     setListLoaded(false);
-    apiCall({ action:"readAll", user, sheet:"month", token }).then(rows => {
+    const keys = Array.from({length:12}, (_,i) => `${year}_${i+1}`);
+    Promise.all(
+      keys.map(key => {
+        if (cacheHas(user, "month", key)) {
+          return Promise.resolve([key, cacheGet(user, "month", key)]);
+        }
+        return apiCall({ action:"readOne", user, sheet:"month", key, token })
+          .then(val => {
+            const str = typeof val === "string" ? val : JSON.stringify(val || {});
+            cacheSet(user, "month", key, str);
+            return [key, str];
+          });
+      })
+    ).then(results => {
       const newCache = {};
-      for (let m = 1; m <= 12; m++) newCache[`${year}_${m}`] = {};
-      if (Array.isArray(rows)) {
-        rows.forEach(r => {
-          if (!r[0] || r[0] === "key") return;
-          if (!String(r[0]).startsWith(String(year))) return;
-          try { newCache[String(r[0])] = JSON.parse(r[1]); } catch { newCache[String(r[0])] = {}; }
-          cacheUpdate(user, "month", String(r[0]), r[1]||"");
-        });
-      }
-      // 空白月份也存進快取
-      for (let m = 1; m <= 12; m++) {
-        const key = `${year}_${m}`;
-        if (!cacheHas(user, "month", key)) cacheSet(user, "month", key, "");
-      }
+      results.forEach(([key, str]) => {
+        try { newCache[key] = str ? JSON.parse(str) : {}; } catch { newCache[key] = {}; }
+      });
       setMonthCache(p => ({ ...p, ...newCache }));
       setListLoaded(true);
     });
