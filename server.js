@@ -277,13 +277,12 @@ async function handleAction(p) {
     return doc.exists ? (doc.data().sharedToken || "") : "";
   }
 
-  // ── initUser（_sessions 和 _users + countdown 平行讀取）─────────────
+  // ── initUser（_sessions 和 _users 平行讀取）─────────────
   if (action === "initUser") {
     if (!token) return { ok: false };
-    const [sessionDoc, userDoc, countdownDoc] = await Promise.all([
+    const [sessionDoc, userDoc] = await Promise.all([
       db.collection("_sessions").doc(token).get(),
       db.collection("_users").doc(user).get(),
-      db.collection(`${user}_countdown`).doc("list").get(),
     ]);
     if (!sessionDoc.exists) return { ok: false };
     const session = sessionDoc.data();
@@ -293,7 +292,7 @@ async function handleAction(p) {
       return { ok: false };
     }
     db.collection("_sessions").doc(token).update({ expiresAt: Date.now() + TOKEN_TTL_MS });
-    if (!userDoc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner", height: "", countdown: null };
+    if (!userDoc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner", height: "" };
     const d = userDoc.data();
     return {
       ok: true,
@@ -305,7 +304,6 @@ async function handleAction(p) {
       loginTheme: d.loginTheme || null,
       defaultModule: d.defaultModule || "planner",
       height: d.height || "",
-      countdown: countdownDoc.exists ? countdownDoc.data().value : null,
     };
   }
 

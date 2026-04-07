@@ -491,19 +491,16 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     window._SHARED_TOKEN = sharedToken;
     window._API_USER = user;
 
-    // height 和 countdown 直接從 initUser 存進 cache
-    const toCache = (val) => val !== null && val !== undefined ? (typeof val === "string" ? val : JSON.stringify(val)) : "";
     cacheSet(user, "settings", "height", String(init.height || ""));
-    cacheSet(user, "countdown", "list", toCache(init.countdown));
+
+    // 預載預設模組資料，等完成後再顯示畫面，避免模組 mount 和 prefetch 同時打 API
+    const defaultMod = storedDefault || init.defaultModule || "planner";
+    await prefetchModuleData(user, token, partner, sharedToken, defaultMod, nowMonth);
 
     setAppLoading(false);
     console.log(`[載入] 完成，總耗時 ${Math.round(performance.now()-t0)} ms`);
 
-    // 畫面顯示後，立刻在背景預載預設模組的資料（不阻塞畫面）
-    const defaultMod = storedDefault || init.defaultModule || "planner";
-    prefetchModuleData(user, token, partner, sharedToken, defaultMod, nowMonth);
-
-    // 背景分批 mount 其他模組，串行執行避免同時打爆 Firestore
+    // 背景分批 mount 其他模組
     const otherModules = MODULES.filter(m => !mountedModules.current.has(m.id));
     otherModules.forEach((m, i) => {
       setTimeout(() => {
@@ -521,7 +518,7 @@ function MainShell({ user, token, displayName: displayName_prop }) {
         const cache = await caches.open("my-planner-v1");
         await cache.put("/sw-session", new Response(JSON.stringify({ user, token })));
 
-        // countdown 資料寫進 SW cache（直接用 initUser 已拿到的 cache，不重複打 API）
+        // countdown 資料寫進 SW cache（prefetch 已存進 cache）
         const countdownCached = cacheGet(user, "countdown", "list");
         if (countdownCached) {
           await cache.put("/sw-countdown", new Response(countdownCached));
@@ -677,41 +674,42 @@ async function prefetchModuleData(user, token, partner, sharedToken, moduleId, n
 
   const fetches = [];
 
-  if (moduleId === "planner") {
+  // countdown 每次都預載（背景通知需要，且資料量小）
+  if (!cacheHas(user, "countdown", "list")) {
     fetches.push(
-      !cacheHas(user,"goals",String(thisYear)) &&
-        apiCall({action:"readOne",user,sheet:"goals",key:String(thisYear),token}).then(v=>{cacheSet(user,"goals",String(thisYear),v||"");}),
-      !cacheHas(user,"daily",today) &&
-        apiCall({action:"readOne",user,sheet:"daily",key:today,token}).then(v=>{cacheSet(user,"daily",today,v||"");}),
-      !Array.from({length:12},(_,i)=>`${thisYear}_${i+1}`).every(k=>cacheHas(user,"month",k)) &&
-        apiCall({action:"readAll",user,sheet:"month",prefix:`${thisYear}_`,token}).then(rows=>{
-          if(Array.isArray(rows)) rows.forEach(([k,v])=>cacheSet(user,"month",k,v||""));
-          for(let m=1;m<=12;m++){const k=`${thisYear}_${m}`;if(!cacheHas(user,"month",k))cacheSet(user,"month",k,"");}
-        }),
+      apiCall({action:"readOne",user,sheet:"countdown",key:"list",token})
+        .then(v => { cacheSet(user, "countdown", "list", v ? (typeof v==="string"?v:JSON.stringify(v)) : ""); })
     );
+  }
+
+  if (moduleId === "planner") {
+    if (!cacheHas(user,"goals",String(thisYear)))
+      fetches.push(apiCall({action:"readOne",user,sheet:"goals",key:String(thisYear),token}).then(v=>{cacheSet(user,"goals",String(thisYear),v||"");}));
+    if (!cacheHas(user,"daily",today))
+      fetches.push(apiCall({action:"readOne",user,sheet:"daily",key:today,token}).then(v=>{cacheSet(user,"daily",today,v||"");}));
+    if (!Array.from({length:12},(_,i)=>`${thisYear}_${i+1}`).every(k=>cacheHas(user,"month",k)))
+      fetches.push(apiCall({action:"readAll",user,sheet:"month",prefix:`${thisYear}_`,token}).then(rows=>{
+        if(Array.isArray(rows)) rows.forEach(([k,v])=>cacheSet(user,"month",k,v||""));
+        for(let m=1;m<=12;m++){const k=`${thisYear}_${m}`;if(!cacheHas(user,"month",k))cacheSet(user,"month",k,"");}
+      }));
   } else if (moduleId === "budget") {
     const myKey = `${user}_${nowMonth}`;
     const partnerKey = partner ? `${partner}_${nowMonth}` : null;
-    fetches.push(
-      !cacheHas("_shared","budget",myKey) &&
-        apiCall({action:"readOne",user:"_shared",sheet:"budget",key:myKey,sharedToken,apiUser:user}).then(v=>{cacheSet("_shared","budget",myKey,v||"");}),
-      partnerKey && !cacheHas("_shared","budget",partnerKey) &&
-        apiCall({action:"readOne",user:"_shared",sheet:"budget",key:partnerKey,sharedToken,apiUser:user}).then(v=>{cacheSet("_shared","budget",partnerKey,v||"");}),
-    );
+    if (!cacheHas("_shared","budget",myKey))
+      fetches.push(apiCall({action:"readOne",user:"_shared",sheet:"budget",key:myKey,sharedToken,apiUser:user}).then(v=>{cacheSet("_shared","budget",myKey,v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
+    if (partnerKey && !cacheHas("_shared","budget",partnerKey))
+      fetches.push(apiCall({action:"readOne",user:"_shared",sheet:"budget",key:partnerKey,sharedToken,apiUser:user}).then(v=>{cacheSet("_shared","budget",partnerKey,v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
   } else if (moduleId === "subscriptions") {
-    fetches.push(
-      !cacheHas(user,"subscriptions","list") &&
-        apiCall({action:"readOne",user,sheet:"subscriptions",key:"list",token}).then(v=>{cacheSet(user,"subscriptions","list",v||"");}),
-    );
+    if (!cacheHas(user,"subscriptions","list"))
+      fetches.push(apiCall({action:"readOne",user,sheet:"subscriptions",key:"list",token}).then(v=>{cacheSet(user,"subscriptions","list",v||"");}));
   } else if (moduleId === "weight") {
-    fetches.push(
-      !cacheHas(user,"weight",weightKey) &&
-        apiCall({action:"readOne",user,sheet:"weight",key:weightKey,token}).then(v=>{cacheSet(user,"weight",weightKey,v||"");}),
-    );
+    if (!cacheHas(user,"weight",weightKey))
+      fetches.push(apiCall({action:"readOne",user,sheet:"weight",key:weightKey,token}).then(v=>{cacheSet(user,"weight",weightKey,v||"");}));
+    if (!cacheHas(user,"settings","height"))
+      fetches.push(apiCall({action:"getHeight",user,token}).then(v=>{cacheSet(user,"settings","height",v||"");}));
   }
-  // countdown 已在 initUser 處理，不需要額外 prefetch
 
-  await Promise.all(fetches.filter(Boolean));
+  await Promise.all(fetches);
 }
 
 function Root() {
