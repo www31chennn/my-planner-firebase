@@ -12,6 +12,8 @@ const API = (() => {
 const SENSITIVE_KEYS = new Set(["token", "sharedToken", "apiUser", "password", "value", "displayName", "subscription"]);
 
 async function apiCall(params) {
+  const t = performance.now();
+  const label = `[API] ${params.action}${params.sheet ? ` ${params.sheet}` : ""}${params.key ? `/${params.key}` : ""}`;
   try {
     const queryParams = {};
     const bodyParams = {};
@@ -30,8 +32,14 @@ async function apiCall(params) {
       body: JSON.stringify(bodyParams),
     });
     const text = await res.text();
+    const ms = Math.round(performance.now() - t);
+    const flag = ms > 1000 ? "🔴" : ms > 500 ? "🟡" : "🟢";
+    console.log(`${flag} ${label} — ${ms}ms`);
     try { return JSON.parse(text); } catch { return text; }
-  } catch(e) { console.error("API error:", e); return null; }
+  } catch(e) { 
+    console.error(`❌ ${label} — ${Math.round(performance.now()-t)}ms`, e);
+    return null;
+  }
 }
 
 async function writeOne(user, sheet, key, value, token) {
