@@ -493,13 +493,14 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     setAppLoading(false);
     console.log(`[載入] 完成，總耗時 ${Math.round(performance.now()-t0)} ms`);
 
-    // 預設模組已顯示，背景分批 mount 其他模組（每隔 800ms 一個，避免同時打爆 API）
+    // 背景分批 mount 其他模組，串行執行避免同時打爆 Firestore
+    // 每個模組間隔 1.5s，讓前一個的 API 有時間完成
     const otherModules = MODULES.filter(m => !mountedModules.current.has(m.id));
     otherModules.forEach((m, i) => {
       setTimeout(() => {
         mountedModules.current.add(m.id);
-        setMountVersion(v => v + 1); // 觸發 re-render 讓新模組加入
-      }, (i + 1) * 800);
+        setMountVersion(v => v + 1);
+      }, (i + 1) * 1500);
     });
 
     // 請求通知權限並訂閱推播

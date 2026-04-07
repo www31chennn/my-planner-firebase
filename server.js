@@ -5,7 +5,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
+
 
 // ── Firebase 初始化 ────────────────────────────────────────
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
@@ -49,7 +49,7 @@ function generateSalt() {
 
 function pbkdf2Hash(password, salt) {
   return new Promise((resolve, reject) => {
-    crypto.pbkdf2(password, salt, 100000, 32, 'sha256', (err, key) => {
+    crypto.pbkdf2(password, salt, 10000, 32, 'sha256', (err, key) => {
       if (err) reject(err);
       else resolve(key.toString('hex'));
     });
@@ -440,7 +440,7 @@ async function handleAction(p) {
 
 // ── HTTP Server ────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
-  const parsedUrl = url.parse(req.url, true);
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
 
   // ── API ────────────────────────────────────────────────
@@ -474,7 +474,8 @@ const server = http.createServer(async (req, res) => {
     } catch { bodyParams = {}; }
 
     // 合併 query string（非敏感）與 body（敏感）
-    const p = { ...parsedUrl.query, ...bodyParams };
+    const query = Object.fromEntries(parsedUrl.searchParams.entries());
+    const p = { ...query, ...bodyParams };
 
     try {
       const result = await handleAction(p);

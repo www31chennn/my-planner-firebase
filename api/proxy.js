@@ -71,7 +71,7 @@ function generateSalt() {
 
 function pbkdf2Hash(password, salt) {
   return new Promise((resolve, reject) => {
-    crypto.pbkdf2(password, salt, 100000, 32, "sha256", (err, key) => {
+    crypto.pbkdf2(password, salt, 10000, 32, "sha256", (err, key) => {
       if (err) reject(err);
       else resolve(key.toString("hex"));
     });
