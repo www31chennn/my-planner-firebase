@@ -59,19 +59,19 @@ module.exports = async function handler(req, res) {
   try {
     // 讀取所有使用者
     const usersSnap = await db.collection("_users").get();
+    console.log(`[cron] 共 ${usersSnap.docs.length} 個使用者`);
 
     for (const userDoc of usersSnap.docs) {
       const user = userDoc.id;
       const userData = userDoc.data();
 
-      // 沒有推播訂閱就跳過（同時支援舊的單一 pushSubscription 和新的 pushSubscriptions 陣列）
       const subscriptions = userData.pushSubscriptions
         || (userData.pushSubscription ? [userData.pushSubscription] : []);
+      console.log(`[cron] ${user}: ${subscriptions.length} 個訂閱`);
       if (subscriptions.length === 0) continue;
 
-      // 讀取這個使用者的倒數日清單
       const countdownDoc = await db.collection(`${user}_countdown`).doc("list").get();
-      if (!countdownDoc.exists) continue;
+      if (!countdownDoc.exists) { console.log(`[cron] ${user}: 無倒數日資料`); continue; }
 
       let items = [];
       try {
@@ -80,8 +80,8 @@ module.exports = async function handler(req, res) {
         if (!Array.isArray(items)) items = [];
       } catch { continue; }
 
-      // 找出今天符合且開啟通知的項目
       const todayItems = items.filter(item => item.notify && isToday(item));
+      console.log(`[cron] ${user}: ${items.length} 個倒數日，今天符合 ${todayItems.length} 個`);
       if (todayItems.length === 0) continue;
 
       // 發送推播給所有裝置
@@ -97,11 +97,12 @@ module.exports = async function handler(req, res) {
                 body: `今天是 ${item.name}`,
               })
             );
+            console.log(`[cron] ${user}: 發送成功 — ${item.name} → ${subscription.endpoint.slice(0,40)}...`);
             userSent++;
             sent++;
           } catch (err) {
+            console.log(`[cron] ${user}: 發送失敗 — ${item.name}, status=${err.statusCode}, msg=${err.message}`);
             if (err.statusCode === 410 || err.statusCode === 404) {
-              // 這個 subscription 已失效，記下來等等清除
               expiredEndpoints.push(subscription.endpoint);
             }
             failed++;
@@ -121,6 +122,7 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    console.log(`[cron] 完成：sent=${sent}, failed=${failed}`);
     return res.status(200).json({ ok: true, sent, failed });
   } catch (err) {
     console.error("Cron error:", err);
