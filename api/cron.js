@@ -31,22 +31,17 @@ webpush.setVapidDetails(
 // ── 計算今天是否符合倒數日 ─────────────────────────────────
 function isToday(item) {
   const now = new Date();
-  // 轉換成台灣時間（UTC+8）
+  // 轉換成台灣時間（UTC+8）取得今天日期字串
   const twTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-  const todayMonth = twTime.getUTCMonth();
-  const todayDate = twTime.getUTCDate();
-  const todayYear = twTime.getUTCFullYear();
+  const todayStr = `${twTime.getUTCFullYear()}-${String(twTime.getUTCMonth()+1).padStart(2,'0')}-${String(twTime.getUTCDate()).padStart(2,'0')}`;
+  const [ty, tm, td] = todayStr.split('-').map(Number);
 
-  const target = new Date(item.date + "T00:00:00Z");
+  const [iy, im, id] = item.date.split('-').map(Number);
 
   if (item.repeat) {
-    return target.getUTCMonth() === todayMonth && target.getUTCDate() === todayDate;
+    return im === tm && id === td;
   } else {
-    return (
-      target.getUTCFullYear() === todayYear &&
-      target.getUTCMonth() === todayMonth &&
-      target.getUTCDate() === todayDate
-    );
+    return iy === ty && im === tm && id === td;
   }
 }
 
