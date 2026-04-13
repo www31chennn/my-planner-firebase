@@ -17,80 +17,148 @@ function getElecColor(usage, maxUsage) {
   return { bg: `rgba(${r},${g},${b},0.15)`, text: `rgb(${r},${g},${b})` };
 }
 
-// 折線圖（顯示電表度數趨勢）
-function ElecLineChart({ data, year, month }) {
-  const [open, setOpen] = React.useState(false);
-  const daysCount = DAYS_IN_MONTH_E(month, year);
-  const points = [];
-  for (let d = 1; d <= daysCount; d++) {
-    const key = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    if (data[key] != null) points.push({ day: d, reading: data[key] });
-  }
+// SVG 折線圖共用邏輯
+function renderLineChart(points, xPos, yPos, W, H, PAD, minV, maxV, gradId, labelKey) {
   if (points.length < 2) return null;
+  const vals = points.map(p => p.value);
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xPos(p)} ${yPos(p.value)}`).join(' ');
+  const areaD = pathD + ` L ${xPos(points[points.length-1])} ${PAD.top + (H - PAD.top - PAD.bottom)} L ${xPos(points[0])} ${PAD.top + (H - PAD.top - PAD.bottom)} Z`;
+  const yTicks = [minV, Math.round((minV + maxV) / 2), maxV];
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', display: 'block' }}>
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={C.accent} stopOpacity="0.18" />
+          <stop offset="100%" stopColor={C.accent} stopOpacity="0.01" />
+        </linearGradient>
+      </defs>
+      {yTicks.map((v, i) => {
+        const y = yPos(v);
+        return (
+          <g key={i}>
+            <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke={C.border} strokeWidth="1" strokeDasharray="3,3" />
+            <text x={PAD.left - 4} y={y + 4} textAnchor="end" fontSize="9" fill={C.sub}>{v}</text>
+          </g>
+        );
+      })}
+      <path d={areaD} fill={`url(#${gradId})`} />
+      <path d={pathD} fill="none" stroke={C.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {points.map((p, i) => (
+        <g key={i}>
+          <circle cx={xPos(p)} cy={yPos(p.value)} r="3" fill={C.card} stroke={C.accent} strokeWidth="1.5" />
+        </g>
+      ))}
+      {points.length > 0 && (
+        <>
+          <text x={xPos(points[0])} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>{points[0][labelKey]}</text>
+          <text x={xPos(points[points.length-1])} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>{points[points.length-1][labelKey]}</text>
+        </>
+      )}
+    </svg>
+  );
+}
 
-  const W = 320, H = 110, PAD = { top: 16, bottom: 24, left: 40, right: 12 };
+// 圖表區塊（含 tab 切換）
+// 當月每日用電折線圖
+function DailyChart({ data, year, month }) {
+  const [open, setOpen] = React.useState(false);
+  const W = 320, H = 110, PAD = { top: 16, bottom: 24, left: 36, right: 12 };
   const chartW = W - PAD.left - PAD.right;
   const chartH = H - PAD.top - PAD.bottom;
-
-  const readings = points.map(p => p.reading);
-  const minR = Math.min(...readings);
-  const maxR = Math.max(...readings);
-  const range = maxR - minR || 1;
-
-  function xPos(day) { return PAD.left + ((day - 1) / (daysCount - 1)) * chartW; }
-  function yPos(r) { return PAD.top + chartH - ((r - minR) / range) * chartH; }
-
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xPos(p.day)} ${yPos(p.reading)}`).join(' ');
-  const areaD = pathD + ` L ${xPos(points[points.length-1].day)} ${PAD.top + chartH} L ${xPos(points[0].day)} ${PAD.top + chartH} Z`;
-  const yTicks = [minR, Math.round((minR + maxR) / 2), maxR];
+  const daysCount = DAYS_IN_MONTH_E(month, year);
+  const dailyPoints = [];
+  const sortedKeys = Object.keys(data).filter(k => data[k] != null).sort();
+  for (let i = 1; i < sortedKeys.length; i++) {
+    const curr = sortedKeys[i];
+    const prev = sortedKeys[i - 1];
+    const diff = Math.round((data[curr] - data[prev]) * 10) / 10;
+    if (diff < 0) continue;
+    const daysBetween = Math.round((new Date(curr) - new Date(prev)) / 86400000);
+    const perDay = Math.round((diff / daysBetween) * 10) / 10;
+    for (let d = 1; d <= daysBetween; d++) {
+      const date = new Date(new Date(prev).getTime() + d * 86400000);
+      const dayNum = date.getDate();
+      if (date.getFullYear() === year && date.getMonth() + 1 === month) {
+        dailyPoints.push({ day: dayNum, value: perDay });
+      }
+    }
+  }
+  const dailyVals = dailyPoints.map(p => p.value);
+  const minD = dailyVals.length ? Math.min(...dailyVals) : 0;
+  const maxD = dailyVals.length ? Math.max(...dailyVals) : 1;
+  const rangeD = maxD - minD || 1;
+  function xPosDay(p) { return PAD.left + ((p.day - 1) / Math.max(daysCount - 1, 1)) * chartW; }
+  function yPosDay(v) { return PAD.top + chartH - ((v - minD) / rangeD) * chartH; }
 
   return (
     <div style={{ background: C.card, borderRadius: 16, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-      <button onClick={() => setOpen(o => !o)} style={{
-        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer',
-      }}>
-        <span style={{ fontSize: 12, color: C.sub, fontWeight: 500 }}>📈 當月電表趨勢</span>
-        <span style={{ fontSize: 12, color: C.sub, transition: 'transform 0.2s', display: 'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <span style={{ fontSize: 12, color: C.sub, fontWeight: 500 }}>📈 當月每日用電</span>
+        <span style={{ fontSize: 12, color: C.sub, display: 'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▾</span>
       </button>
       {open && (
         <div style={{ padding: '0 16px 14px' }}>
-          <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', display: 'block' }}>
-            <defs>
-              <linearGradient id="eGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={C.accent} stopOpacity="0.18" />
-                <stop offset="100%" stopColor={C.accent} stopOpacity="0.01" />
-              </linearGradient>
-            </defs>
-            {yTicks.map((v, i) => {
-              const y = yPos(v);
-              return (
-                <g key={i}>
-                  <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke={C.border} strokeWidth="1" strokeDasharray="3,3" />
-                  <text x={PAD.left - 4} y={y + 4} textAnchor="end" fontSize="9" fill={C.sub}>{v}</text>
-                </g>
-              );
-            })}
-            <path d={areaD} fill="url(#eGrad)" />
-            <path d={pathD} fill="none" stroke={C.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-            {points.map((p, i) => (
-              <g key={i}>
-                <circle cx={xPos(p.day)} cy={yPos(p.reading)} r="3.5" fill={C.card} stroke={C.accent} strokeWidth="2" />
-                {(p.reading === Math.max(...readings) || p.reading === Math.min(...readings)) && (
-                  <text x={xPos(p.day)} y={yPos(p.reading) + (p.reading === Math.min(...readings) ? 13 : -6)}
-                    textAnchor="middle" fontSize="9" fill={p.reading === Math.max(...readings) ? '#D0533A' : '#4A7C59'} fontWeight="700">
-                    {p.reading}
-                  </text>
-                )}
-              </g>
-            ))}
-            <text x={PAD.left} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>1</text>
-            <text x={W - PAD.right} y={H - 4} textAnchor="middle" fontSize="9" fill={C.sub}>{daysCount}</text>
-          </svg>
+          {dailyPoints.length >= 2
+            ? renderLineChart(dailyPoints, xPosDay, yPosDay, W, H, PAD, minD, maxD, 'eGradDaily', 'day')
+            : <div style={{ textAlign: 'center', color: C.sub, fontSize: 12, padding: '16px 0' }}>至少需要 2 天的讀數</div>
+          }
         </div>
       )}
     </div>
   );
+}
+
+// 年度每月總用電折線圖
+function YearlyChart({ year, monthlyTotals, monthlyLoading, onOpen }) {
+  const [open, setOpen] = React.useState(false);
+  const W = 320, H = 110, PAD = { top: 16, bottom: 24, left: 36, right: 12 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+
+  const monthPoints = monthlyTotals.filter(m => m.total != null).map((m, i) => ({ ...m, value: m.total, idx: i }));
+  const monthVals = monthPoints.map(p => p.value);
+  const minM = monthVals.length ? Math.min(...monthVals) : 0;
+  const maxM = monthVals.length ? Math.max(...monthVals) : 1;
+  const rangeM = maxM - minM || 1;
+  function xPosMonth(p) { return PAD.left + (p.idx / Math.max(monthPoints.length - 1, 1)) * chartW; }
+  function yPosMonth(v) { return PAD.top + chartH - ((v - minM) / rangeM) * chartH; }
+
+  return (
+    <div style={{ background: C.card, borderRadius: 16, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+      <button onClick={() => {
+        const next = !open;
+        setOpen(next);
+        if (next && onOpen) onOpen();
+      }} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <span style={{ fontSize: 12, color: C.sub, fontWeight: 500 }}>📊 {year} 年每月用電</span>
+        <span style={{ fontSize: 12, color: C.sub, display: 'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 16px 14px' }}>
+          {monthlyLoading
+            ? <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
+                <div style={{ width: 20, height: 20, borderRadius: 10, border: `2px solid ${C.border}`, borderTopColor: C.accent, animation: 'spin 0.8s linear infinite' }} />
+              </div>
+            : monthPoints.length >= 2
+              ? <>
+                  {renderLineChart(monthPoints, xPosMonth, yPosMonth, W, H, PAD, minM, maxM, 'eGradMonthly', 'label')}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                    {monthPoints.map((p, i) => (
+                      <span key={i} style={{ fontSize: 9, color: C.sub }}>{p.label}</span>
+                    ))}
+                  </div>
+                </>
+              : <div style={{ textAlign: 'center', color: C.sub, fontSize: 12, padding: '16px 0' }}>至少需要 2 個月的資料</div>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 舊的 ElecCharts 保留為空（避免 undefined 錯誤）
+function ElecCharts({ data, year, month, monthlyTotals, monthlyLoading, onOpen }) {
+  return null; // 已拆成 DailyChart 和 YearlyChart
 }
 
 // 輸入 Modal
@@ -152,7 +220,10 @@ function ElectricityApp({ user, token, saving, setSaving, partnerVersion }) {
   const [loaded, setLoaded] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [partner, setPartner] = useState(undefined);
+  const [monthlyTotals, setMonthlyTotals] = useState([]); // [{label, total}]
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
   const timer = useRef(null);
+  const loadCancelRef = useRef(0); // 用來取消過期的 loadMonthlyTotals
 
   const SHEET = "electricity";
 
@@ -213,6 +284,52 @@ function ElectricityApp({ user, token, saving, setSaving, partnerVersion }) {
     });
   }, [year, month, partner]);
 
+  // 載入近 6 個月總用電（展開圖表時呼叫）
+  // 載入當年 1-12 月總用電
+  async function loadMonthlyTotals() {
+    const myToken = ++loadCancelRef.current;
+    setMonthlyLoading(true);
+    setMonthlyTotals([]);
+    const results = [];
+    for (let m = 1; m <= 12; m++) {
+      if (loadCancelRef.current !== myToken) return;
+      const owner = (partner && window._SHARED_TOKEN) ? window._SHARED_TOKEN : user;
+      const k = `${owner}_${year}_${m}`;
+      const label = `${m}月`;
+      let monthData = null;
+      if (cacheHas("_shared", SHEET, k)) {
+        const cached = cacheGet("_shared", SHEET, k);
+        try { monthData = cached ? JSON.parse(cached) : {}; } catch { monthData = {}; }
+      } else {
+        const val = await apiCall({ ...sharedParams(), action:"readOne", key:k });
+        if (loadCancelRef.current !== myToken) return;
+        const str = typeof val === "string" ? val : JSON.stringify(val || {});
+        cacheSet("_shared", SHEET, k, str);
+        try { monthData = val ? (typeof val === "object" ? val : JSON.parse(val)) : {}; } catch { monthData = {}; }
+      }
+      const prefix = `${year}-${String(m).padStart(2,'0')}`;
+      const mReadings = Object.keys(monthData || {}).filter(kk => kk.startsWith(prefix) && monthData[kk] != null).sort();
+      let total = null;
+      if (mReadings.length > 0) {
+        const last = monthData[mReadings[mReadings.length - 1]];
+        const allKeys = Object.keys(monthData || {}).filter(kk => monthData[kk] != null).sort();
+        const prevKeys = allKeys.filter(kk => kk < mReadings[0]);
+        const startVal = prevKeys.length > 0 ? monthData[prevKeys[prevKeys.length - 1]] : monthData[mReadings[0]];
+        const t = Math.round((last - startVal) * 10) / 10;
+        if (t >= 0) total = t;
+      }
+      results.push({ label, total });
+    }
+    if (loadCancelRef.current !== myToken) return;
+    setMonthlyTotals(results);
+    setMonthlyLoading(false);
+  }
+
+  // 年份或夥伴變更時重新載入每月總計（直接呼叫，不管圖表是否展開）
+  useEffect(() => {
+    loadMonthlyTotals();
+  }, [year, partner]);
+
   function save(next) {
     setData(next);
     cacheSet("_shared", SHEET, KEY, JSON.stringify(next));
@@ -270,18 +387,19 @@ function ElectricityApp({ user, token, saving, setSaving, partnerVersion }) {
   const monthPrefix = `${year}-${String(month).padStart(2,'0')}`;
   const monthReadings = readings.filter(k => k.startsWith(monthPrefix));
 
-  // 月用電量：需要找本月第一筆之前的上一筆讀數（可能在上月）
+  // 月用電量：找本月第一筆之前的上一筆讀數（可能在上月）
   let monthTotal = null;
+  let monthTotalLabel = null; // 起訖說明
   if (monthReadings.length > 0) {
     const firstInMonth = monthReadings[0];
     const lastInMonth = monthReadings[monthReadings.length - 1];
-    // 找第一筆之前的讀數
     const prevReadings = readings.filter(k => k < firstInMonth);
-    const startReading = prevReadings.length > 0
-      ? data[prevReadings[prevReadings.length - 1]]
-      : data[firstInMonth]; // 沒有前一筆就從第一筆算
-    monthTotal = Math.round((data[lastInMonth] - startReading) * 10) / 10;
-    if (monthTotal < 0) monthTotal = null;
+    const startKey = prevReadings.length > 0 ? prevReadings[prevReadings.length - 1] : null;
+    const startReading = startKey ? data[startKey] : data[firstInMonth];
+    const t = Math.round((data[lastInMonth] - startReading) * 10) / 10;
+    if (t >= 0) {
+      monthTotal = t;
+    }
   }
 
   const usageValues = Object.values(dailyUsage).filter(v => v > 0);
@@ -289,6 +407,8 @@ function ElectricityApp({ user, token, saving, setSaving, partnerVersion }) {
   const avgDailyUsage = usageValues.length
     ? Math.round((usageValues.reduce((a,b)=>a+b,0) / usageValues.length) * 10) / 10
     : null;
+
+
 
   const latestReading = readings.length ? data[readings[readings.length - 1]] : null;
 
@@ -307,6 +427,9 @@ function ElectricityApp({ user, token, saving, setSaving, partnerVersion }) {
 
   return (
     <div style={{ height:"100%", overflowY:"auto", padding:"20px 20px 100px", background:C.bg }}>
+
+      {/* 年度每月用電圖（在月份導航外，不隨月份重置）*/}
+      <YearlyChart year={year} monthlyTotals={monthlyTotals} monthlyLoading={monthlyLoading} onOpen={loadMonthlyTotals} />
 
       {/* 月份導航 */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
@@ -347,9 +470,8 @@ function ElectricityApp({ user, token, saving, setSaving, partnerVersion }) {
 
       {/* 統計卡 */}
       {usageValues.length > 0 && (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:14 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14 }}>
           {[
-            { label:"本月用電", value: monthTotal != null ? `${monthTotal} 度` : "—", color:C.accent },
             { label:"日均用電", value: avgDailyUsage != null ? `${avgDailyUsage} 度` : "—", color:"#4A7C59" },
             { label:"單日最高", value: maxDailyUsage ? `${maxDailyUsage} 度` : "—", color:"#D0533A" },
           ].map(s => (
@@ -361,8 +483,8 @@ function ElectricityApp({ user, token, saving, setSaving, partnerVersion }) {
         </div>
       )}
 
-      {/* 折線圖 */}
-      <ElecLineChart data={data} year={year} month={month} />
+      {/* 當月每日用電折線圖 */}
+      <DailyChart data={data} year={year} month={month} />
 
       {/* 日曆 */}
       <div style={{ background:C.card, borderRadius:16, padding:16, boxShadow:"0 1px 3px rgba(0,0,0,0.06)" }}>
@@ -392,6 +514,7 @@ function ElectricityApp({ user, token, saving, setSaving, partnerVersion }) {
               const hasReading = data[dateKey] != null;
               const usage = dailyUsage[dateKey];
               const isEstimated = !hasReading && usage != null;
+              const isMax = hasReading && usage != null && usage === maxDailyUsage && maxDailyUsage > 0;
               const { bg, text } = hasReading && usage != null
                 ? getElecColor(usage, maxDailyUsage)
                 : hasReading
