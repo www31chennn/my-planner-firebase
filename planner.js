@@ -138,7 +138,6 @@ function MonthPlanner({ user, token, saving, setSaving, year }) {
       .every(m => cacheHas(user, "month", `${year}_${m}`));
 
     if (allCached) {
-      // 快取都有，直接從快取建立 monthCache
       const newCache = {};
       for (let m = 1; m <= 12; m++) {
         const key = `${year}_${m}`;
@@ -150,20 +149,19 @@ function MonthPlanner({ user, token, saving, setSaving, year }) {
       return;
     }
 
-    // 快取沒有，打 API
+    // 用 readAll + prefix 只撈當年資料，一次請求搞定
     setListLoaded(false);
-    apiCall({ action:"readAll", user, sheet:"month", token }).then(rows => {
+    apiCall({ action:"readAll", user, sheet:"month", prefix:`${year}_`, token }).then(rows => {
       const newCache = {};
       for (let m = 1; m <= 12; m++) newCache[`${year}_${m}`] = {};
       if (Array.isArray(rows)) {
         rows.forEach(r => {
-          if (!r[0] || r[0] === "key") return;
-          if (!String(r[0]).startsWith(String(year))) return;
+          if (!r[0]) return;
           try { newCache[String(r[0])] = JSON.parse(r[1]); } catch { newCache[String(r[0])] = {}; }
           cacheUpdate(user, "month", String(r[0]), r[1]||"");
         });
       }
-      // 空白月份也存進快取
+      // 空白月份也存進快取，下次不再打 API
       for (let m = 1; m <= 12; m++) {
         const key = `${year}_${m}`;
         if (!cacheHas(user, "month", key)) cacheSet(user, "month", key, "");
@@ -342,6 +340,17 @@ function DailyNote({ user, token, saving, setSaving }) {
     }, 1500);
   }
 
+  function prevDay() {
+    const d = new Date(date+"T00:00:00");
+    d.setDate(d.getDate() - 1);
+    setDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+  }
+  function nextDay() {
+    const d = new Date(date+"T00:00:00");
+    d.setDate(d.getDate() + 1);
+    setDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+  }
+  const isToday = date === today;
   const dateLabel = new Date(date+"T00:00:00").toLocaleDateString("zh-TW",{month:"long",day:"numeric",weekday:"long"});
 
   return (
@@ -353,8 +362,12 @@ function DailyNote({ user, token, saving, setSaving }) {
           <SaveDot saving={saving} />
         </div>
       </div>
-      <input type="date" value={date} onChange={e=>setDate(toDateKey(e.target.value))}
-        style={{ width:"100%", maxWidth:"100%", border:`1.5px solid ${C.border}`, borderRadius:12, padding:"11px 14px", fontSize:14, color:C.text, background:C.card, outline:"none", marginBottom:16, display:"block", WebkitAppearance:"none", appearance:"none" }} />
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
+        <button onClick={prevDay} style={{ width:36, height:36, borderRadius:18, background:C.card, border:`1.5px solid ${C.border}`, cursor:"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
+        <input type="date" value={date} onChange={e=>setDate(toDateKey(e.target.value))}
+          style={{ flex:1, border:`1.5px solid ${C.border}`, borderRadius:12, padding:"11px 14px", fontSize:14, color:C.text, background:C.card, outline:"none", WebkitAppearance:"none", appearance:"none" }} />
+        <button onClick={nextDay} disabled={isToday} style={{ width:36, height:36, borderRadius:18, background:C.card, border:`1.5px solid ${C.border}`, cursor:isToday?"default":"pointer", fontSize:18, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, opacity:isToday?0.3:1 }}>›</button>
+      </div>
       {note === null ? <Spinner /> : (
         <>
           {!note && <div style={{ textAlign:"center", padding:"20px 0 12px", color:C.sub, fontSize:14 }}>這天還沒有記錄</div>}

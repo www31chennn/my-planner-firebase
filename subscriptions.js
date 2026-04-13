@@ -292,24 +292,7 @@ function SubscriptionsApp({ user, token, saving, setSaving }) {
   const [loaded, setLoaded] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editSub, setEditSub] = useState(null);
-  const [cardColor, setCardColor] = useState(localStorage.getItem(`subCardColor_${user}`) || C.accent);
-  const [showColorPicker, setShowColorPicker] = useState(false);
   const timer = useRef(null);
-
-  const COLOR_OPTIONS = [
-    { label:"森林綠", value:"#4A7C59" },
-    { label:"深藍", value:"#2C5F8A" },
-    { label:"紫色", value:"#6B4A8A" },
-    { label:"玫瑰", value:"#8A4A5F" },
-    { label:"橘色", value:"#C4622D" },
-    { label:"深灰", value:"#3D3D3D" },
-  ];
-
-  function saveCardColor(color) {
-    setCardColor(color);
-    localStorage.setItem(`subCardColor_${user}`, color);
-    setShowColorPicker(false);
-  }
 
   // 個人資料，key 用 list
   const SHEET = "subscriptions";
@@ -376,30 +359,13 @@ function SubscriptionsApp({ user, token, saving, setSaving }) {
       <div style={{ padding:"20px 20px 100px" }}>
 
         {/* 統計卡 */}
-        <div style={{ background:`linear-gradient(135deg, ${cardColor}, ${cardColor}cc)`, borderRadius:20, padding:"20px 24px", marginBottom:24, color:"#fff", position:"relative" }}>
+        <div style={{ background:`linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`, borderRadius:20, padding:"20px 24px", marginBottom:24, color:"#fff", position:"relative" }}>
           <div style={{ fontSize:13, opacity:0.8, marginBottom:6 }}>本月訂閱總費用</div>
           <div style={{ fontSize:32, fontFamily:"'Noto Serif TC',serif", fontWeight:700, marginBottom:4 }}>
             NT$ {Math.round(monthlyTotal).toLocaleString()}
           </div>
           <div style={{ fontSize:13, opacity:0.7 }}>年費合計 NT$ {Math.round(yearlyTotal).toLocaleString()}</div>
           <div style={{ fontSize:12, opacity:0.6, marginTop:8 }}>共 {subs.length} 項訂閱 · 匯率 1 USD = {USD_TO_NTD} NT$</div>
-          {/* 換色按鈕 */}
-          <button onClick={()=>setShowColorPicker(p=>!p)}
-            style={{ position:"absolute", top:16, right:16, background:"rgba(255,255,255,0.2)", border:"none", borderRadius:8, padding:"4px 8px", cursor:"pointer", fontSize:16 }}>
-            🎨
-          </button>
-          {/* 顏色選擇器 */}
-          {showColorPicker && (
-            <div className="pop-in" style={{ position:"absolute", top:48, right:16, background:C.card, borderRadius:14, padding:12, boxShadow:"0 8px 24px rgba(0,0,0,0.15)", display:"flex", flexWrap:"wrap", gap:8, width:180, zIndex:10 }}>
-              {COLOR_OPTIONS.map(opt => (
-                <button key={opt.value} onClick={()=>saveCardColor(opt.value)}
-                  style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 10px", borderRadius:8, border:`2px solid ${cardColor===opt.value?"#fff":"transparent"}`, background:opt.value, cursor:"pointer", width:"100%" }}>
-                  <span style={{ fontSize:12, color:"#fff", fontWeight:600 }}>{opt.label}</span>
-                  {cardColor===opt.value && <span style={{ marginLeft:"auto", fontSize:12 }}>✓</span>}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* 訂閱列表 */}

@@ -31,22 +31,17 @@ webpush.setVapidDetails(
 // ── 計算今天是否符合倒數日 ─────────────────────────────────
 function isToday(item) {
   const now = new Date();
-  // 轉換成台灣時間（UTC+8）
+  // 轉換成台灣時間（UTC+8）取得今天日期字串
   const twTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-  const todayMonth = twTime.getUTCMonth();
-  const todayDate = twTime.getUTCDate();
-  const todayYear = twTime.getUTCFullYear();
+  const todayStr = `${twTime.getUTCFullYear()}-${String(twTime.getUTCMonth()+1).padStart(2,'0')}-${String(twTime.getUTCDate()).padStart(2,'0')}`;
+  const [ty, tm, td] = todayStr.split('-').map(Number);
 
-  const target = new Date(item.date + "T00:00:00Z");
+  const [iy, im, id] = item.date.split('-').map(Number);
 
   if (item.repeat) {
-    return target.getUTCMonth() === todayMonth && target.getUTCDate() === todayDate;
+    return im === tm && id === td;
   } else {
-    return (
-      target.getUTCFullYear() === todayYear &&
-      target.getUTCMonth() === todayMonth &&
-      target.getUTCDate() === todayDate
-    );
+    return iy === ty && im === tm && id === td;
   }
 }
 
@@ -64,17 +59,19 @@ module.exports = async function handler(req, res) {
   try {
     // 讀取所有使用者
     const usersSnap = await db.collection("_users").get();
+    console.log(`[cron] 共 ${usersSnap.docs.length} 個使用者`);
 
     for (const userDoc of usersSnap.docs) {
       const user = userDoc.id;
       const userData = userDoc.data();
 
-      // 沒有推播訂閱就跳過
-      if (!userData.pushSubscription) continue;
+      const subscriptions = userData.pushSubscriptions
+        || (userData.pushSubscription ? [userData.pushSubscription] : []);
+      console.log(`[cron] ${user}: ${subscriptions.length} 個訂閱`);
+      if (subscriptions.length === 0) continue;
 
-      // 讀取這個使用者的倒數日清單
       const countdownDoc = await db.collection(`${user}_countdown`).doc("list").get();
-      if (!countdownDoc.exists) continue;
+      if (!countdownDoc.exists) { console.log(`[cron] ${user}: 無倒數日資料`); continue; }
 
       let items = [];
       try {
@@ -83,30 +80,39 @@ module.exports = async function handler(req, res) {
         if (!Array.isArray(items)) items = [];
       } catch { continue; }
 
-      // 找出今天符合且開啟通知的項目
       const todayItems = items.filter(item => item.notify && isToday(item));
+      console.log(`[cron] ${user}: ${items.length} 個倒數日，今天符合 ${todayItems.length} 個`);
       if (todayItems.length === 0) continue;
 
-      // 發送推播
-      const subscription = userData.pushSubscription;
+      // 發送推播給所有裝置
+      const expiredEndpoints = [];
       let userSent = 0;
-      for (const item of todayItems) {
-        try {
-          await webpush.sendNotification(
-            subscription,
-            JSON.stringify({
-              title: "my-planner",
-              body: `今天是 ${item.name}`,
-            })
-          );
-          userSent++;
-          sent++;
-        } catch (err) {
-          if (err.statusCode === 410 || err.statusCode === 404) {
-            await userDoc.ref.update({ pushSubscription: null });
+      for (const subscription of subscriptions) {
+        for (const item of todayItems) {
+          try {
+            await webpush.sendNotification(
+              subscription,
+              JSON.stringify({
+                title: "my-planner",
+                body: `今天是 ${item.name}`,
+              })
+            );
+            console.log(`[cron] ${user}: 發送成功 — ${item.name} → ${subscription.endpoint.slice(0,40)}...`);
+            userSent++;
+            sent++;
+          } catch (err) {
+            console.log(`[cron] ${user}: 發送失敗 — ${item.name}, status=${err.statusCode}, msg=${err.message}`);
+            if (err.statusCode === 410 || err.statusCode === 404) {
+              expiredEndpoints.push(subscription.endpoint);
+            }
+            failed++;
           }
-          failed++;
         }
+      }
+      // 清除失效的 subscriptions
+      if (expiredEndpoints.length > 0) {
+        const remaining = subscriptions.filter(s => !expiredEndpoints.includes(s.endpoint));
+        await userDoc.ref.update({ pushSubscriptions: remaining });
       }
       // 記錄今天已從 server 發過通知，讓 SW 不重複發
       if (userSent > 0) {
@@ -116,6 +122,7 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    console.log(`[cron] 完成：sent=${sent}, failed=${failed}`);
     return res.status(200).json({ ok: true, sent, failed });
   } catch (err) {
     console.error("Cron error:", err);

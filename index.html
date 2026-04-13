@@ -7,6 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="計畫本" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+  <link rel="icon" type="image/png" href="/icon.png" />
   <title>計畫本</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
   <script>
@@ -221,6 +224,26 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
   const [saving, setSaving] = useState(false);
   const [selectedDefault, setSelectedDefault] = useState(defaultModule || "planner");
 
+  // 改密碼
+  const [oldPwd, setOldPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [pwdMsg, setPwdMsg] = useState("");
+  const [pwdSaving, setPwdSaving] = useState(false);
+
+  async function changePassword() {
+    if (!oldPwd || !newPwd) { setPwdMsg("請填寫舊密碼和新密碼"); return; }
+    setPwdSaving(true); setPwdMsg("");
+    const res = await apiCall({ action:"changePassword", user, token, oldPassword:oldPwd, newPassword:newPwd });
+    setPwdSaving(false);
+    if (res?.ok) {
+      setOldPwd(""); setNewPwd("");
+      setPwdMsg("✅ 密碼已更新！");
+    } else {
+      setPwdMsg("❌ " + (res?.error || "更新失敗"));
+    }
+    setTimeout(() => setPwdMsg(""), 3000);
+  }
+
   // 記帳夥伴
   const [partner, setPartner] = useState(window._CACHE?.[`${user}:budget_partner:partner`] || "");
   const [partnerInput, setPartnerInput] = useState("");
@@ -287,12 +310,14 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
 
   return (
     <div className="fade-in" style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.3)", zIndex:300, display:"flex", alignItems:"flex-end" }}>
-      <div style={{ width:"100%", maxWidth:430, margin:"0 auto", background:C.card, borderRadius:"20px 20px 0 0", padding:"24px 20px 48px", maxHeight:"80vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
+      <div style={{ width:"100%", maxWidth:430, margin:"0 auto", background:C.card, borderRadius:"20px 20px 0 0", maxHeight:"85vh", display:"flex", flexDirection:"column" }}>
+        {/* 固定標題列 */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"20px 20px 16px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
           <div style={{ fontSize:18, fontWeight:700, color:C.text }}>設定</div>
           <button onClick={onClose} style={{ background:C.border, border:"none", borderRadius:10, width:32, height:32, cursor:"pointer", fontSize:16 }}>✕</button>
         </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+        {/* 可滾動內容 */}
+        <div style={{ overflowY:"auto", padding:"20px 20px 48px", display:"flex", flexDirection:"column", gap:20 }}>
 
           {/* 計畫本名稱 */}
           <div>
@@ -314,25 +339,54 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
 
           {msg && <div style={{ fontSize:13, color:C.accent, textAlign:"center" }}>{msg}</div>}
 
+          {/* 改密碼 */}
+          <div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:7 }}>變更密碼</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <input type="password" value={oldPwd} onChange={e=>setOldPwd(e.target.value)}
+                placeholder="舊密碼" autoComplete="current-password" style={inp} />
+              <div style={{ display:"flex", gap:8 }}>
+                <input type="password" value={newPwd} onChange={e=>setNewPwd(e.target.value)}
+                  placeholder="新密碼（至少 6 碼）" autoComplete="new-password" style={inp} />
+                <button onClick={changePassword} disabled={pwdSaving}
+                  style={{ ...btn, opacity:pwdSaving?0.7:1 }}>{pwdSaving?"更新中":"更新"}</button>
+              </div>
+            </div>
+            {pwdMsg && <div style={{ fontSize:13, marginTop:6, color: pwdMsg.startsWith("❌") ? C.red : C.accent }}>{pwdMsg}</div>}
+          </div>
+
           {/* 分隔線 */}
           <div style={{ height:1, background:C.border }} />
 
-          {/* 模組管理 */}
+          {/* 模組管理（含預設頁設定）*/}
           <div>
-            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:10 }}>顯示模組</div>
+            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>顯示模組</div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:10 }}>點左側圓點設為開啟 App 時的預設頁面</div>
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {MODULES.map(m => {
                 const isEnabled = enabledModules.includes(m.id);
                 const isPlanner = m.id === "planner";
+                const isDefault = selectedDefault === m.id;
                 return (
-                  <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <div key={m.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                    {/* 預設頁 radio dot */}
+                    <div onClick={async () => {
+                      if (!isEnabled) return;
+                      setSelectedDefault(m.id);
+                      localStorage.setItem("defaultModule_"+user, m.id);
+                      onDefaultModuleChange && onDefaultModuleChange(m.id);
+                      await apiCall({ action:"saveDefaultModule", user, token, value:m.id });
+                      setMsg("預設頁面已更新！"); setTimeout(()=>setMsg(""), 2000);
+                    }} style={{ width:18, height:18, borderRadius:9, border:`2px solid ${isDefault && isEnabled ? C.accent : C.border}`, background: isDefault && isEnabled ? C.accent : "transparent", cursor: isEnabled ? "pointer" : "default", flexShrink:0, opacity: isEnabled ? 1 : 0.25, transition:"all 0.15s" }} />
+                    {/* 名稱 */}
+                    <div style={{ display:"flex", alignItems:"center", gap:8, flex:1 }}>
                       <span style={{ fontSize:18 }}>{m.emoji}</span>
                       <span style={{ fontSize:14, color: isPlanner ? C.sub : C.text }}>{m.label}</span>
-                      {isPlanner && <span style={{ fontSize:11, color:C.sub }}>（必要）</span>}
+                      {isDefault && isEnabled && <span style={{ fontSize:10, color:C.accent, background:C.accentLight, padding:"1px 6px", borderRadius:6, fontWeight:600 }}>預設</span>}
                     </div>
+                    {/* 顯示開關 */}
                     <div onClick={() => {
-                      if (isPlanner) return; // 計畫本不能關
+                      if (isPlanner) return;
                       const next = isEnabled
                         ? enabledModules.filter(id => id !== m.id)
                         : [...enabledModules, m.id];
@@ -348,38 +402,6 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
                         boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 分隔線 */}
-          <div style={{ height:1, background:C.border }} />
-
-          {/* 預設開啟頁面 */}
-          <div>
-            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>🏠 開啟 App 預設頁面</div>
-            <div style={{ fontSize:12, color:C.sub, marginBottom:10 }}>每次開啟 App 時，直接跳到這個分頁</div>
-            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-              {MODULES.filter(m => enabledModules.includes(m.id)).map(m => {
-                const isSelected = selectedDefault === m.id;
-                return (
-                  <button key={m.id} onClick={async () => {
-                    setSelectedDefault(m.id);
-                    localStorage.setItem("defaultModule_"+user, m.id);
-                    onDefaultModuleChange && onDefaultModuleChange(m.id);
-                    await apiCall({ action:"saveDefaultModule", user, token, value:m.id });
-                    setMsg("預設頁面已更新！"); setTimeout(()=>setMsg(""), 2000);
-                  }} style={{
-                    display:"flex", alignItems:"center", gap:10,
-                    padding:"10px 14px", borderRadius:12, border:`1.5px solid ${isSelected ? C.accent : C.border}`,
-                    background: isSelected ? C.accentLight : C.bg,
-                    cursor:"pointer", textAlign:"left", transition:"all 0.15s"
-                  }}>
-                    <span style={{ fontSize:20 }}>{m.emoji}</span>
-                    <span style={{ fontSize:14, fontWeight: isSelected ? 600 : 400, color: isSelected ? C.accent : C.text, flex:1 }}>{m.label}</span>
-                    {isSelected && <span style={{ fontSize:12, color:C.accent, fontWeight:600 }}>✓</span>}
-                  </button>
                 );
               })}
             </div>
@@ -408,6 +430,7 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
               <div>
                 <div style={{ fontSize:12, color:C.sub, marginBottom:7 }}>輸入夥伴的帳號名稱</div>
                 <div style={{ display:"flex", gap:8 }}>
+
                   <input value={partnerInput} onChange={e=>setPartnerInput(e.target.value)}
                     placeholder="夥伴帳號" style={inp} />
                   <button onClick={setPartnerAction} disabled={partnerSaving}
@@ -441,9 +464,11 @@ function MainShell({ user, token, displayName: displayName_prop }) {
   // 用 partnerVersion 讓 BudgetApp 知道夥伴關係有變，強制重新讀取
   const [partnerVersion, setPartnerVersion] = useState(0);
   const [enabledModules, setEnabledModules] = useState(["planner"]);
+  const [mountVersion, setMountVersion] = useState(0); // 控制背景模組分批 mount
   const [appLoading, setAppLoading] = useState(true);
   const [displayName, setDisplayName] = useState(displayName_prop);
   const shellTouchStart = useRef(null);
+  const mountedModules = useRef(new Set([storedDefault || "planner"]));
 
   function handleShellTouchStart(e) {
     shellTouchStart.current = e.touches[0].clientX;
@@ -460,11 +485,14 @@ function MainShell({ user, token, displayName: displayName_prop }) {
 
   useEffect(()=>{
     (async () => {
+    const t0 = performance.now();
+    console.log("[載入] 開始");
     const now = new Date();
     const nowMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
     // 一次 API 呼叫取得所有使用者設定，大幅減少 roundtrip
     const init = await apiCall({ action:"initUser", user, token });
+    console.log(`[載入] initUser 完成，耗時 ${Math.round(performance.now()-t0)} ms`, init);
     const partner = (init?.budgetPartner && String(init.budgetPartner).trim() && String(init.budgetPartner) !== "null") ? String(init.budgetPartner).trim() : "";
     const sharedToken = (init?.sharedToken && String(init.sharedToken).trim() && String(init.sharedToken) !== "null") ? String(init.sharedToken).trim() : "";
 
@@ -480,26 +508,43 @@ function MainShell({ user, token, displayName: displayName_prop }) {
     if (Array.isArray(init?.enabledModules) && init.enabledModules.length > 0) {
       setEnabledModules(init.enabledModules);
     }
-    if (init?.defaultModule) {
+    if (init?.defaultModule && init.defaultModule !== "planner") {
       const dm = init.defaultModule;
       localStorage.setItem("defaultModule_"+user, dm);
-      // 只有在沒有 localStorage 暫存時才切換（避免蓋掉使用者手動切換的頁面）
-      if (!storedDefault) setCurrentModule(dm);
+      setDefaultModule(dm);
+      // localStorage 沒有值時（被清空），Firestore 的設定才是主要來源
+      if (!storedDefault) {
+        setCurrentModule(dm);
+        // 同時修正 mountedModules，讓正確的預設模組先 mount
+        if (!mountedModules.current.has(dm)) {
+          mountedModules.current.clear();
+          mountedModules.current.add(dm);
+        }
+      }
     }
 
     window._CACHE = window._CACHE || {};
     window._CACHE[`${user}:budget_partner:partner`] = partner;
     window._SHARED_TOKEN = sharedToken;
-    window._API_USER = user;  // 供 _shared 請求驗證用
+    window._API_USER = user;
 
-    // 預載 partner 的記帳（有夥伴且有 sharedToken 才需要）
-    if (partner && sharedToken) {
-      apiCall({ action:"readOne", user:"_shared", sheet:"budget", key:`${partner}_${nowMonth}`, sharedToken })
-        .then(val => {
-          window._CACHE[`_shared:budget:${partner}_${nowMonth}`] = typeof val==="string" ? val : JSON.stringify(val||[]);
-        });
-    }
+    cacheSet(user, "settings", "height", String(init.height || ""));
+
+    // 預載預設模組資料，等完成後再顯示畫面，避免模組 mount 和 prefetch 同時打 API
+    const defaultMod = storedDefault || init.defaultModule || "planner";
+    await prefetchModuleData(user, token, partner, sharedToken, defaultMod, nowMonth);
+
     setAppLoading(false);
+    console.log(`[載入] 完成，總耗時 ${Math.round(performance.now()-t0)} ms`);
+
+    // 背景分批 mount 其他模組
+    const otherModules = MODULES.filter(m => !mountedModules.current.has(m.id));
+    otherModules.forEach((m, i) => {
+      setTimeout(() => {
+        mountedModules.current.add(m.id);
+        setMountVersion(v => v + 1);
+      }, (i + 1) * 1500);
+    });
 
     // 請求通知權限並訂閱推播
     if ("Notification" in window && "serviceWorker" in navigator) {
@@ -510,11 +555,10 @@ function MainShell({ user, token, displayName: displayName_prop }) {
         const cache = await caches.open("my-planner-v1");
         await cache.put("/sw-session", new Response(JSON.stringify({ user, token })));
 
-        // countdown 資料寫進 SW cache
-        const countdownVal = await apiCall({ action:"readOne", user, sheet:"countdown", key:"list", token });
-        if (countdownVal) {
-          const items = typeof countdownVal === "string" ? countdownVal : JSON.stringify(countdownVal);
-          await cache.put("/sw-countdown", new Response(items));
+        // countdown 資料寫進 SW cache（prefetch 已存進 cache）
+        const countdownCached = cacheGet(user, "countdown", "list");
+        if (countdownCached) {
+          await cache.put("/sw-countdown", new Response(countdownCached));
         }
 
         // 訂閱推播（VAPID）
@@ -574,20 +618,24 @@ function MainShell({ user, token, displayName: displayName_prop }) {
       </div>
 
       <div style={{ flex:1, overflow:"hidden", position:"relative" }}>
-        {MODULES.map(m => (
-          <div key={m.id} style={{ position:"absolute", inset:0, visibility:currentModule===m.id?"visible":"hidden", pointerEvents:currentModule===m.id?"auto":"none" }}>
-            <m.component
-              user={user}
-              token={token}
-              displayName={displayName}
-              saving={saving}
-              setSaving={setSaving}
-              plannerName={plannerName}
-              onOpenSettings={()=>setShowSettings(true)}
-              partnerVersion={partnerVersion}
-            />
-          </div>
-        ))}
+        {MODULES.map(m => {
+          // 預設模組立即 mount；其他模組等 mountedModules 裡有才 mount（背景載入後加入）
+          if (!mountedModules.current.has(m.id)) return null;
+          return (
+            <div key={m.id} style={{ position:"absolute", inset:0, visibility:currentModule===m.id?"visible":"hidden", pointerEvents:currentModule===m.id?"auto":"none" }}>
+              <m.component
+                user={user}
+                token={token}
+                displayName={displayName}
+                saving={saving}
+                setSaving={setSaving}
+                plannerName={plannerName}
+                onOpenSettings={()=>setShowSettings(true)}
+                partnerVersion={partnerVersion}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {showMenu && (
@@ -599,8 +647,12 @@ function MainShell({ user, token, displayName: displayName_prop }) {
           enabledModules={enabledModules}
           onSwitch={id => {
             setCurrentModule(id);
-            // 如果切換到已停用的模組，改去計畫本
             if (!enabledModules.includes(id)) setCurrentModule("planner");
+            // 如果背景還沒 mount 到這個模組，立即 mount
+            if (!mountedModules.current.has(id)) {
+              mountedModules.current.add(id);
+              setMountVersion(v => v + 1);
+            }
           }}
           onSettings={()=>setShowSettings(true)}
           onLogout={handleLogout}
@@ -648,6 +700,46 @@ function MainShell({ user, token, displayName: displayName_prop }) {
       )}
     </div>
   );
+}
+
+// 畫面顯示後在背景預載指定模組的資料，存進 cache 讓模組 mount 時直接命中
+async function prefetchModuleData(user, token, partner, sharedToken, moduleId, nowMonth) {
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  const today = `${thisYear}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const weightKey = `${thisYear}_${now.getMonth()+1}`;
+
+  const fetches = [];
+
+  if (moduleId === "planner") {
+    if (!cacheHas(user,"goals",String(thisYear)))
+      fetches.push(apiCall({action:"readOne",user,sheet:"goals",key:String(thisYear),token}).then(v=>{cacheSet(user,"goals",String(thisYear),v||"");}));
+    if (!cacheHas(user,"daily",today))
+      fetches.push(apiCall({action:"readOne",user,sheet:"daily",key:today,token}).then(v=>{cacheSet(user,"daily",today,v||"");}));
+    if (!Array.from({length:12},(_,i)=>`${thisYear}_${i+1}`).every(k=>cacheHas(user,"month",k)))
+      fetches.push(apiCall({action:"readAll",user,sheet:"month",prefix:`${thisYear}_`,token}).then(rows=>{
+        if(Array.isArray(rows)) rows.forEach(([k,v])=>cacheSet(user,"month",k,v||""));
+        for(let m=1;m<=12;m++){const k=`${thisYear}_${m}`;if(!cacheHas(user,"month",k))cacheSet(user,"month",k,"");}
+      }));
+  } else if (moduleId === "budget") {
+    const myKey = `${user}_${nowMonth}`;
+    const partnerKey = partner ? `${partner}_${nowMonth}` : null;
+    if (!cacheHas("_shared","budget",myKey))
+      fetches.push(apiCall({action:"readOne",user:"_shared",sheet:"budget",key:myKey,sharedToken,apiUser:user}).then(v=>{cacheSet("_shared","budget",myKey,v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
+    if (partnerKey && !cacheHas("_shared","budget",partnerKey))
+      fetches.push(apiCall({action:"readOne",user:"_shared",sheet:"budget",key:partnerKey,sharedToken,apiUser:user}).then(v=>{cacheSet("_shared","budget",partnerKey,v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
+  } else if (moduleId === "subscriptions") {
+    if (!cacheHas(user,"subscriptions","list"))
+      fetches.push(apiCall({action:"readOne",user,sheet:"subscriptions",key:"list",token}).then(v=>{cacheSet(user,"subscriptions","list",v||"");}));
+  } else if (moduleId === "weight") {
+    if (!cacheHas(user,"weight",weightKey))
+      fetches.push(apiCall({action:"readOne",user,sheet:"weight",key:weightKey,token}).then(v=>{cacheSet(user,"weight",weightKey,v||"");}));
+  } else if (moduleId === "countdown") {
+    if (!cacheHas(user,"countdown","list"))
+      fetches.push(apiCall({action:"readOne",user,sheet:"countdown",key:"list",token}).then(v=>{cacheSet(user,"countdown","list",v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
+  }
+
+  await Promise.all(fetches);
 }
 
 function Root() {

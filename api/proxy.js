@@ -185,6 +185,25 @@ async function handleAction(p) {
     return { ok: true };
   }
 
+  if (action === "changePassword") {
+    if (!await verifyToken()) return { ok: false, error: "驗證失敗" };
+    const { oldPassword, newPassword } = p;
+    if (!oldPassword || !newPassword) return { ok: false, error: "請填寫舊密碼和新密碼" };
+    if (newPassword.length < 6) return { ok: false, error: "新密碼至少需要 6 個字元" };
+    const ref = db.collection("_users").doc(user);
+    const doc = await ref.get();
+    if (!doc.exists) return { ok: false, error: "帳號不存在" };
+    const data = doc.data();
+    // 驗證舊密碼
+    const isValid = await verifyPassword(oldPassword, data);
+    if (!isValid) return { ok: false, error: "舊密碼錯誤" };
+    // 產生新的 salt + hash
+    const newSalt = generateSalt();
+    const newHash = await pbkdf2Hash(newPassword, newSalt);
+    await ref.update({ passwordHash: newHash, salt: newSalt, password: null });
+    return { ok: true };
+  }
+
   if (action === "updateName") {
     if (!await verifyToken()) return { ok: false };
     await db.collection("_users").doc(user).update({ displayName: displayName || "" });
@@ -237,10 +256,13 @@ async function handleAction(p) {
   if (action === "savePushSubscription") {
     if (!await verifyToken()) return { ok: false };
     const subscription = p.subscription;
-    if (!subscription) return { ok: false };
-    await db.collection("_users").doc(user).update({
-      pushSubscription: subscription
-    });
+    if (!subscription || !subscription.endpoint) return { ok: false };
+    const userDoc = await db.collection("_users").doc(user).get();
+    const existing = userDoc.exists ? (userDoc.data().pushSubscriptions || []) : [];
+    // 同 endpoint 就更新，沒有就新增
+    const updated = existing.filter(s => s.endpoint !== subscription.endpoint);
+    updated.push(subscription);
+    await db.collection("_users").doc(user).update({ pushSubscriptions: updated });
     return { ok: true };
   }
 
@@ -268,12 +290,23 @@ async function handleAction(p) {
     return doc.exists ? (doc.data().sharedToken || "") : "";
   }
 
-  // ── 合併初始化：一次讀取所有 _users 欄位，減少 roundtrip ──
+  // ── 合併初始化：_sessions 和 _users 平行讀取，不阻塞畫面顯示 ──
   if (action === "initUser") {
-    if (!await verifyToken()) return { ok: false };
-    const doc = await db.collection("_users").doc(user).get();
-    if (!doc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner" };
-    const d = doc.data();
+    if (!token) return { ok: false };
+    const [sessionDoc, userDoc] = await Promise.all([
+      db.collection("_sessions").doc(token).get(),
+      db.collection("_users").doc(user).get(),
+    ]);
+    if (!sessionDoc.exists) return { ok: false };
+    const session = sessionDoc.data();
+    if (session.user !== user) return { ok: false };
+    if (Date.now() > session.expiresAt) {
+      await db.collection("_sessions").doc(token).delete();
+      return { ok: false };
+    }
+    db.collection("_sessions").doc(token).update({ expiresAt: Date.now() + TOKEN_TTL_MS });
+    if (!userDoc.exists) return { ok: true, plannerName: "", avatar: "👤", enabledModules: ["planner"], budgetPartner: "", sharedToken: "", loginTheme: null, defaultModule: "planner", height: "" };
+    const d = userDoc.data();
     return {
       ok: true,
       plannerName: d.plannerName || "",
@@ -283,6 +316,7 @@ async function handleAction(p) {
       sharedToken: d.sharedToken || "",
       loginTheme: d.loginTheme || null,
       defaultModule: d.defaultModule || "planner",
+      height: d.height || "",
     };
   }
 
@@ -375,7 +409,13 @@ async function handleAction(p) {
 
   if (action === "readAll") {
     if (!await verifyToken()) return [];
-    const snapshot = await db.collection(collectionName).get();
+    const prefix = p.prefix || "";
+    let query = db.collection(collectionName);
+    if (prefix) {
+      // Firestore 用 >= prefix 且 < prefix + "\uf8ff" 來模擬前綴查詢
+      query = query.where("__name__", ">=", prefix).where("__name__", "<=", prefix + "\uf8ff");
+    }
+    const snapshot = await query.get();
     if (snapshot.empty) return [];
     return snapshot.docs.map(doc => [doc.id, doc.data().value]);
   }
