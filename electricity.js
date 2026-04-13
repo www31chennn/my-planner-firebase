@@ -119,7 +119,7 @@ function ElecInputModal({ date, currentReading, onSave, onDelete, onClose }) {
             placeholder="12345.6"
             autoFocus
             onKeyDown={e=>e.key==="Enter"&&handleSave()}
-            style={{ flex:1, border:`1.5px solid ${C.border}`, borderRadius:12, padding:"12px 16px", fontSize:22, color:C.text, background:C.bg, outline:"none", textAlign:"center", fontFamily:"'Noto Serif TC',serif", fontWeight:700 }}
+            style={{ flex:1, minWidth:0, border:`1.5px solid ${C.border}`, borderRadius:12, padding:"10px 12px", fontSize:18, color:C.text, background:C.bg, outline:"none", textAlign:"center", fontFamily:"'Noto Serif TC',serif", fontWeight:700, }}
           />
           <div style={{ fontSize:16, color:C.sub, fontWeight:600 }}>度</div>
         </div>
