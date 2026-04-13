@@ -34,6 +34,7 @@
   <script src="/weight.js" type="text/babel"></script>
   <script src="/budget.js" type="text/babel"></script>
   <script src="/countdown.js" type="text/babel"></script>
+  <script src="/electricity.js" type="text/babel"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     html, body, #root { height: 100%; }
@@ -64,6 +65,7 @@ const MODULES = [
   { id:"weight", label:"體重記錄", emoji:"⚖️", component: WeightApp },
   { id:"budget", label:"記帳", emoji:"💰", component: BudgetApp },
   { id:"countdown", label:"紀念日", emoji:"🗓️", component: CountdownApp },
+  { id:"electricity", label:"電表記錄", emoji:"⚡", component: ElectricityApp },
 ];
 
 function CoverPage({ onLogin }) {
@@ -737,6 +739,10 @@ async function prefetchModuleData(user, token, partner, sharedToken, moduleId, n
   } else if (moduleId === "countdown") {
     if (!cacheHas(user,"countdown","list"))
       fetches.push(apiCall({action:"readOne",user,sheet:"countdown",key:"list",token}).then(v=>{cacheSet(user,"countdown","list",v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
+  } else if (moduleId === "electricity") {
+    const elecKey = `${thisYear}_${now.getMonth()+1}`;
+    if (!cacheHas(user,"electricity",elecKey))
+      fetches.push(apiCall({action:"readOne",user,sheet:"electricity",key:elecKey,token}).then(v=>{cacheSet(user,"electricity",elecKey,v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
   }
 
   await Promise.all(fetches);

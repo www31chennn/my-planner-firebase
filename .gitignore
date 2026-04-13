@@ -1,0 +1,18 @@
+# 環境變數
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+
+# Vercel
+.vercel
+
+# 系統檔案
+.DS_Store
+Thumbs.db
+
+# 編輯器
+.vscode/
+.idea/
