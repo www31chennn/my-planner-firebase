@@ -143,7 +143,7 @@ function ElecInputModal({ date, currentReading, onSave, onDelete, onClose }) {
 }
 
 // ── Electricity App ─────────────────────────────────────────────
-function ElectricityApp({ user, token, saving, setSaving }) {
+function ElectricityApp({ user, token, saving, setSaving, partnerVersion }) {
   const thisYear = new Date().getFullYear();
   const thisMonth = new Date().getMonth() + 1;
   const [year, setYear] = useState(thisYear);
@@ -151,22 +151,59 @@ function ElectricityApp({ user, token, saving, setSaving }) {
   const [data, setData] = useState({}); // { "YYYY-MM-DD": 度數 }
   const [loaded, setLoaded] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [partner, setPartner] = useState(undefined);
   const timer = useRef(null);
 
   const SHEET = "electricity";
-  const KEY = `${year}_${month}`;
+
+  // 有夥伴用 sharedToken 當 key，無夥伴用自己的 user
+  const dataOwner = (partner && window._SHARED_TOKEN) ? window._SHARED_TOKEN : user;
+  const KEY = `${dataOwner}_${year}_${month}`;
+
+  function sharedParams() {
+    return {
+      user: "_shared",
+      sheet: SHEET,
+      token,
+      sharedToken: window._SHARED_TOKEN || "",
+      apiUser: window._API_USER || user,
+    };
+  }
+
+  // 初始載入 partner（共用記帳夥伴）
+  useEffect(() => {
+    if (`${user}:budget_partner:partner` in (window._CACHE || {})) {
+      setPartner(window._CACHE[`${user}:budget_partner:partner`] || "");
+      return;
+    }
+    apiCall({ action:"getBudgetPartner", user, token }).then(val => {
+      const p = (val && String(val).trim() && String(val) !== "null") ? String(val).trim() : "";
+      cacheSet(user, "budget_partner", "partner", p);
+      setPartner(p);
+    });
+  }, []);
+
+  // 夥伴關係改變時更新
+  useEffect(() => {
+    if (partnerVersion === 0) return;
+    const newPartner = window._CACHE?.[`${user}:budget_partner:partner`] ?? "";
+    setPartner(newPartner);
+    setData({});
+    setLoaded(false);
+  }, [partnerVersion]);
 
   useEffect(() => {
-    if (cacheHas(user, SHEET, KEY)) {
-      const cached = cacheGet(user, SHEET, KEY);
+    if (partner === undefined) return;
+    if (cacheHas("_shared", SHEET, KEY)) {
+      const cached = cacheGet("_shared", SHEET, KEY);
       try { setData(cached ? JSON.parse(cached) : {}); } catch { setData({}); }
       setLoaded(true);
       return;
     }
     setLoaded(false);
-    apiCall({ action:"readOne", user, sheet:SHEET, key:KEY, token }).then(val => {
+    apiCall({ ...sharedParams(), action:"readOne", key:KEY }).then(val => {
       const str = typeof val === "string" ? val : JSON.stringify(val || {});
-      cacheSet(user, SHEET, KEY, str);
+      cacheSet("_shared", SHEET, KEY, str);
       try {
         if (!val) setData({});
         else if (typeof val === "object" && !Array.isArray(val)) setData(val);
@@ -174,15 +211,15 @@ function ElectricityApp({ user, token, saving, setSaving }) {
       } catch { setData({}); }
       setLoaded(true);
     });
-  }, [year, month]);
+  }, [year, month, partner]);
 
   function save(next) {
     setData(next);
-    cacheSet(user, SHEET, KEY, JSON.stringify(next));
+    cacheSet("_shared", SHEET, KEY, JSON.stringify(next));
     setSaving(p => ({...p, electricity:true}));
     clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
-      await writeOne(user, SHEET, KEY, JSON.stringify(next), token);
+      await apiCall({ ...sharedParams(), action:"writeOne", key:KEY, value:JSON.stringify(next) });
       setSaving(p => ({...p, electricity:false}));
     }, 1500);
   }
@@ -203,14 +240,25 @@ function ElectricityApp({ user, token, saving, setSaving }) {
   const daysCount = DAYS_IN_MONTH_E(month, year);
 
   // 建立有序的日期清單
-  const dailyUsage = {}; // { "YYYY-MM-DD": 用電量 }
+  const dailyUsage = {}; // { "YYYY-MM-DD": 用電量（已攤分）}
   const sortedDates = Object.keys(data).filter(k => data[k] != null).sort();
 
   for (let i = 1; i < sortedDates.length; i++) {
     const curr = sortedDates[i];
     const prev = sortedDates[i - 1];
-    const diff = Math.round((data[curr] - data[prev]) * 10) / 10;
-    if (diff >= 0) dailyUsage[curr] = diff;
+    const totalDiff = Math.round((data[curr] - data[prev]) * 10) / 10;
+    if (totalDiff < 0) continue;
+
+    // 計算兩筆之間隔了幾天
+    const daysBetween = Math.round((new Date(curr) - new Date(prev)) / 86400000);
+    const perDay = Math.round((totalDiff / daysBetween) * 10) / 10;
+
+    // 把每天都填上平均值
+    for (let d = 1; d <= daysBetween; d++) {
+      const date = new Date(new Date(prev).getTime() + d * 86400000);
+      const dateKey = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+      dailyUsage[dateKey] = perDay;
+    }
   }
 
   // 本月統計
@@ -342,11 +390,12 @@ function ElectricityApp({ user, token, saving, setSaving }) {
               const day = i + 1;
               const dateKey = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
               const hasReading = data[dateKey] != null;
-              const usage = dailyUsage[dateKey]; // 當日用電量（差值）
-              const { bg, text } = usage != null
+              const usage = dailyUsage[dateKey];
+              const isEstimated = !hasReading && usage != null;
+              const { bg, text } = hasReading && usage != null
                 ? getElecColor(usage, maxDailyUsage)
                 : hasReading
-                  ? { bg: "#EAF2EC", text: "#4A7C59" } // 有讀數但算不出差值（第一筆）
+                  ? { bg: "#EAF2EC", text: "#4A7C59" }
                   : { bg: C.bg, text: C.sub };
               const isToday = isCurrentMonth && day === today.getDate();
 
@@ -354,11 +403,14 @@ function ElectricityApp({ user, token, saving, setSaving }) {
                 <button key={day} onClick={() => setSelectedDate(dateKey)}
                   style={{ aspectRatio:"1", borderRadius:10, border:`1.5px solid ${isToday?C.accent:hasReading?"transparent":C.border}`, background:hasReading?bg:C.bg, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:1, padding:2, transition:"all 0.15s" }}>
                   <span style={{ fontSize:10, color:isToday?C.accent:C.sub, fontWeight:isToday?700:400 }}>{day}</span>
-                  {usage != null && (
+                  {hasReading && usage != null && (
                     <span style={{ fontSize:9, fontWeight:700, color:text, lineHeight:1 }}>{usage}</span>
                   )}
-                  {usage == null && hasReading && (
+                  {hasReading && usage == null && (
                     <span style={{ fontSize:8, color:"#4A7C59", lineHeight:1 }}>●</span>
+                  )}
+                  {isEstimated && (
+                    <span style={{ fontSize:8, color:C.sub, lineHeight:1 }}>~{usage}</span>
                   )}
                 </button>
               );

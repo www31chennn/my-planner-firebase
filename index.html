@@ -52,6 +52,9 @@
     .menu-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.3); }
     .menu-panel { position:relative; width:260px; background:#fff; height:100%; display:flex; flex-direction:column; box-shadow:4px 0 20px rgba(0,0,0,0.1); animation:slideIn 0.25s ease; }
     @keyframes slideIn { from { transform:translateX(-100%); } to { transform:translateX(0); } }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
   </style>
 </head>
 <body>
@@ -283,7 +286,7 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
       window._CACHE[`${user}:budget_partner:partner`] = res.partner;
       setPartner(res.partner);
       setPartnerInput("");
-      setPartnerMsg("✅ 已成功建立記帳夥伴關係！");
+      setPartnerMsg("✅ 已成功建立夥伴關係！");
       onPartnerChange && onPartnerChange(res.partner);
     } else {
       setPartnerMsg("❌ " + (res?.error || "設定失敗"));
@@ -412,9 +415,10 @@ function SettingsModal({ user, token, plannerName, setPlannerName, onClose, onNi
           {/* 分隔線 */}
           <div style={{ height:1, background:C.border }} />
 
-          {/* 記帳夥伴 */}
+          {/* 共用夥伴 */}
           <div>
-            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:10 }}>💰 記帳夥伴</div>
+            <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:4 }}>🤝 共用夥伴</div>
+            <div style={{ fontSize:12, color:C.sub, marginBottom:10 }}>設定後，記帳與電表記錄將與夥伴共用</div>
             {partner ? (
               <div>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:C.accentLight, borderRadius:10, padding:"10px 14px", marginBottom:8 }}>
@@ -740,9 +744,10 @@ async function prefetchModuleData(user, token, partner, sharedToken, moduleId, n
     if (!cacheHas(user,"countdown","list"))
       fetches.push(apiCall({action:"readOne",user,sheet:"countdown",key:"list",token}).then(v=>{cacheSet(user,"countdown","list",v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
   } else if (moduleId === "electricity") {
-    const elecKey = `${thisYear}_${now.getMonth()+1}`;
-    if (!cacheHas(user,"electricity",elecKey))
-      fetches.push(apiCall({action:"readOne",user,sheet:"electricity",key:elecKey,token}).then(v=>{cacheSet(user,"electricity",elecKey,v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
+    const dataOwner = (partner && sharedToken) ? sharedToken : user;
+    const elecKey = `${dataOwner}_${thisYear}_${now.getMonth()+1}`;
+    if (!cacheHas("_shared","electricity",elecKey))
+      fetches.push(apiCall({action:"readOne",user:"_shared",sheet:"electricity",key:elecKey,sharedToken,apiUser:user,token}).then(v=>{cacheSet("_shared","electricity",elecKey,v ? (typeof v==="string"?v:JSON.stringify(v)) : "");}));
   }
 
   await Promise.all(fetches);
