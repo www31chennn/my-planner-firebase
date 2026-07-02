@@ -651,22 +651,6 @@ function WeightApp({ user, token, saving, setSaving }) {
         )}
       </div>
 
-      {/* 孕期體重追蹤 入口（小巧、可關閉，非所有使用者都需要） */}
-      {!hidePregnancyEntry && (
-        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:14 }}>
-          <button onClick={()=>setShowPregnancy(true)}
-            style={{ display:"flex", alignItems:"center", gap:6, background:C.card, border:`1.5px solid ${C.border}`, borderRadius:999, padding:"6px 12px 6px 10px", cursor:"pointer" }}>
-            <span style={{ fontSize:14 }}>🤰</span>
-            <span style={{ fontSize:12.5, fontWeight:600, color:C.text }}>孕期追蹤</span>
-          </button>
-          <button onClick={()=>{ localStorage.setItem("hidePregnancyEntry_"+user, "1"); setHidePregnancyEntry(true); }}
-            title="隱藏此功能"
-            style={{ width:24, height:24, borderRadius:12, border:"none", background:"none", color:C.sub, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
-            ×
-          </button>
-        </div>
-      )}
-
       {/* 統計卡 */}
       {weights.length > 0 && (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:14 }}>
@@ -723,6 +707,28 @@ function WeightApp({ user, token, saving, setSaving }) {
 
         {weights.length === 0 && loaded && (
           <div style={{ textAlign:"center", padding:"16px 0 8px", color:C.sub, fontSize:13 }}>點擊日期記錄體重</div>
+        )}
+      </div>
+
+      {/* 孕期體重追蹤 入口（放在頁尾、低調，非所有使用者都需要） */}
+      <div style={{ textAlign:"center", marginTop:18 }}>
+        {!hidePregnancyEntry ? (
+          <div style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
+            <button onClick={()=>setShowPregnancy(true)}
+              style={{ background:"none", border:"none", color:C.sub, fontSize:11.5, cursor:"pointer", padding:"4px 2px", textDecoration:"underline", textUnderlineOffset:2 }}>
+              🤰 孕期追蹤
+            </button>
+            <button onClick={()=>{ localStorage.setItem("hidePregnancyEntry_"+user, "1"); setHidePregnancyEntry(true); }}
+              title="隱藏此功能"
+              style={{ width:18, height:18, borderRadius:9, border:"none", background:"none", color:C.sub, fontSize:12, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center" }}>
+              ×
+            </button>
+          </div>
+        ) : (
+          <button onClick={()=>{ localStorage.removeItem("hidePregnancyEntry_"+user); setHidePregnancyEntry(false); }}
+            style={{ background:"none", border:"none", color:C.sub, fontSize:11, cursor:"pointer", padding:"4px 2px", textDecoration:"underline", textUnderlineOffset:2 }}>
+            顯示孕期追蹤
+          </button>
         )}
       </div>
 
