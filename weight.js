@@ -36,6 +36,331 @@ function getBMIStatus(bmi) {
   return           { label:"肥胖", color:"#D0533A" };
 }
 
+// ── 孕期體重追蹤 ────────────────────────────────────────────
+// 依「十月懷胎」傳統算法：以最後一次月經日（LMP）為起點，每個孕月固定28天（4週）
+const PREG_MONTHS = 10;
+
+// 依孕前 BMI 分類（美國 IOM 標準）估算整個孕期建議總增重範圍
+function pregnancyCategoryFor(bmi) {
+  if (bmi < 18.5) return { label:"過輕", min:12.5, max:18 };
+  if (bmi < 25)   return { label:"正常", min:11.5, max:16 };
+  if (bmi < 30)   return { label:"過重", min:7, max:11.5 };
+  return             { label:"肥胖", min:5, max:9 };
+}
+
+// 累計增重佔總增重的比例：前3個月（第一孕期）只佔12%，其餘平均分配到第4~10個月
+function pregnancyCumFraction(m) {
+  const triFrac = 0.12;
+  if (m <= 3) return (m / 3) * triFrac;
+  return triFrac + ((m - 3) / 7) * (1 - triFrac);
+}
+
+function pregnancyMonthRange(lmpStr, m) {
+  const lmp = new Date(lmpStr + "T00:00:00");
+  const start = new Date(lmp); start.setDate(start.getDate() + (m - 1) * 28);
+  const end = new Date(lmp); end.setDate(end.getDate() + m * 28 - 1);
+  return { start, end };
+}
+
+function fmtMD_P(d) { return `${d.getMonth() + 1}/${d.getDate()}`; }
+function dateKeyP(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+// 找出從 start 到 end 涵蓋的所有 {year, month}，用來知道要向伺服器抓哪幾個月的體重資料
+function monthKeysBetween(start, end) {
+  const keys = [];
+  let y = start.getFullYear(), m = start.getMonth() + 1;
+  const endY = end.getFullYear(), endM = end.getMonth() + 1;
+  while (y < endY || (y === endY && m <= endM)) {
+    keys.push({ year: y, month: m });
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return keys;
+}
+
+function PregnancyHeader({ title, onBack, right }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 4px 18px" }}>
+      <button onClick={onBack}
+        style={{ display:"flex", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", fontSize:14, color:C.sub, padding:"6px 4px" }}>
+        <span style={{ fontSize:18 }}>‹</span> 返回
+      </button>
+      <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:"'Noto Serif TC',serif" }}>{title}</div>
+      <div style={{ width:56, textAlign:"right" }}>{right}</div>
+    </div>
+  );
+}
+
+function PregnancySetup({ user, token, initial, height, onSaved }) {
+  const [lmp, setLmp] = useState(initial.lmpDate || "");
+  const [preW, setPreW] = useState(initial.prePregnancyWeight ? String(initial.prePregnancyWeight) : "");
+  const [saving, setSavingLocal] = useState(false);
+
+  async function handleSave() {
+    const w = parseFloat(preW);
+    if (!lmp || isNaN(w) || w <= 0) return;
+    setSavingLocal(true);
+    const payload = { lmpDate: lmp, prePregnancyWeight: w };
+    const str = JSON.stringify(payload);
+    cacheSet(user, "pregnancy", "settings", str);
+    await writeOne(user, "pregnancy", "settings", str, token);
+    setSavingLocal(false);
+    onSaved(payload);
+  }
+
+  const inp = { width:"100%", border:`1.5px solid ${C.border}`, borderRadius:12, padding:"13px 16px", fontSize:15, color:C.text, background:C.card, outline:"none" };
+  const canSave = lmp && preW && !isNaN(parseFloat(preW));
+
+  return (
+    <div style={{ padding:"8px 20px 40px" }}>
+      <div style={{ textAlign:"center", marginBottom:26 }}>
+        <div style={{ fontSize:36, marginBottom:8 }}>🤰</div>
+        <div style={{ fontSize:13, color:C.sub }}>先設定最後一次月經日與孕前體重，{"\n"}就能算出每個孕月的建議增重範圍</div>
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:14, maxWidth:320, margin:"0 auto" }}>
+        <div>
+          <div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>最後一次月經日（LMP）</div>
+          <input type="date" value={lmp} onChange={e=>setLmp(e.target.value)} style={inp} />
+        </div>
+        <div>
+          <div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>孕前體重（kg）</div>
+          <input type="number" inputMode="decimal" step="0.1" value={preW} onChange={e=>setPreW(e.target.value)} placeholder="例如 52" style={inp} />
+        </div>
+        {!height && (
+          <div style={{ fontSize:12, color:C.sub, background:C.accentLight, borderRadius:10, padding:"10px 12px" }}>
+            提醒：還沒設定身高，先在上方「身高」欄位填寫，才能算出孕前 BMI。
+          </div>
+        )}
+        <button onClick={handleSave} disabled={saving || !canSave}
+          style={{ padding:"13px 0", borderRadius:12, border:"none", background:C.accent, color:"#fff", fontSize:15, fontWeight:600, cursor:"pointer", opacity:(saving||!canSave)?0.5:1 }}>
+          {saving ? "儲存中…" : "開始追蹤"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 累計增重曲線圖：建議區間 vs 實際累計增重
+function PregnancyChart({ rows, preWeight }) {
+  const W = 320, H = 150, PAD = { top: 14, bottom: 22, left: 30, right: 10 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+
+  const allVals = [];
+  rows.forEach(r => {
+    if (r.targetMax != null) allVals.push(r.targetMax);
+    if (r.avg != null) allVals.push(r.avg - preWeight);
+  });
+  const maxVal = Math.max(...allVals, 1) * 1.15;
+
+  const x = (m) => PAD.left + (chartW * (m - 1) / (PREG_MONTHS - 1));
+  const y = (v) => PAD.top + chartH - (chartH * v / maxVal);
+
+  const bandTop = rows.map(r => `${r.m===1?'M':'L'} ${x(r.m)} ${y(r.targetMax)}`).join(' ');
+  const bandBottom = rows.slice().reverse().map(r => `L ${x(r.m)} ${y(r.targetMin)}`).join(' ');
+  const bandPath = `${bandTop} ${bandBottom} Z`;
+
+  const actualPts = rows.filter(r => r.avg != null).map(r => ({ m:r.m, v:r.avg - preWeight }));
+  const actualLine = actualPts.map((p,i) => `${i===0?'M':'L'} ${x(p.m)} ${y(p.v)}`).join(' ');
+
+  const yTicks = [0, maxVal/2, maxVal].map(v => Math.round(v*10)/10);
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:"block", overflow:"visible" }}>
+      {yTicks.map((v,i) => (
+        <g key={i}>
+          <line x1={PAD.left} y1={y(v)} x2={W-PAD.right} y2={y(v)} stroke={C.border} strokeWidth="1" strokeDasharray="3,3" />
+          <text x={PAD.left-4} y={y(v)+3} textAnchor="end" fontSize="8" fill={C.sub}>{v}</text>
+        </g>
+      ))}
+      <path d={bandPath} fill={C.accent} opacity="0.13" />
+      {actualPts.length > 0 && <path d={actualLine} fill="none" stroke={C.red} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+      {actualPts.map((p,i) => <circle key={i} cx={x(p.m)} cy={y(p.v)} r="3" fill={C.red} />)}
+      {rows.map(r => (
+        <text key={r.m} x={x(r.m)} y={H-6} textAnchor="middle" fontSize="8" fill={C.sub}>{r.m}</text>
+      ))}
+    </svg>
+  );
+}
+
+function PregnancyMonthCard({ row }) {
+  const hasTarget = row.targetMin != null;
+  let status = null;
+  if (row.avg != null && hasTarget) {
+    const gain = row.avg - row.preWeight;
+    if (gain > row.targetMax) status = { label:`高於建議 +${(gain-row.targetMax).toFixed(1)}kg`, color:"#D0533A" };
+    else if (gain < row.targetMin) status = { label:`低於建議 ${(gain-row.targetMin).toFixed(1)}kg`, color:"#C4622D" };
+    else status = { label:"落在建議範圍內", color:"#4A7C59" };
+  }
+
+  return (
+    <div style={{ background:C.card, borderRadius:14, padding:"12px 14px", boxShadow:"0 1px 3px rgba(0,0,0,0.06)", display:"flex", alignItems:"center", gap:12 }}>
+      <div style={{ width:56, flexShrink:0 }}>
+        <div style={{ fontSize:14, fontWeight:700, color:C.accent, fontFamily:"'Noto Serif TC',serif" }}>第{row.m}月</div>
+        <div style={{ fontSize:10, color:C.sub, marginTop:1 }}>{fmtMD_P(row.start)}–{fmtMD_P(row.end)}</div>
+      </div>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:11, color:C.sub }}>
+          建議累計 {hasTarget ? `+${row.targetMin.toFixed(1)}~+${row.targetMax.toFixed(1)}kg` : "—"}
+        </div>
+        {row.avg != null ? (
+          <div style={{ fontSize:13, fontWeight:600, color:status?status.color:C.text, marginTop:2 }}>
+            平均 {row.avg.toFixed(1)}kg（{row.count}筆）· {status && status.label}
+          </div>
+        ) : (
+          <div style={{ fontSize:12, color:C.sub, marginTop:2 }}>本月尚無體重紀錄</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PregnancyView({ user, token, height, onBack }) {
+  const [settings, setSettings] = useState(null); // null=載入中, false=尚未設定
+  const [weightData, setWeightData] = useState({});
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      if (cacheHas(user, "pregnancy", "settings")) {
+        const raw = cacheGet(user, "pregnancy", "settings");
+        try { setSettings(raw ? JSON.parse(raw) : false); } catch { setSettings(false); }
+        return;
+      }
+      const val = await apiCall({ action:"readOne", user, sheet:"pregnancy", key:"settings", token });
+      const str = typeof val === "string" ? val : (val ? JSON.stringify(val) : "");
+      cacheSet(user, "pregnancy", "settings", str);
+      try { setSettings(str ? JSON.parse(str) : false); } catch { setSettings(false); }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!settings || !settings.lmpDate) return;
+    (async () => {
+      setDataLoaded(false);
+      const { start } = pregnancyMonthRange(settings.lmpDate, 1);
+      const { end } = pregnancyMonthRange(settings.lmpDate, PREG_MONTHS);
+      const keys = monthKeysBetween(start, end);
+      const merged = {};
+      await Promise.all(keys.map(async ({ year, month }) => {
+        const k = `${year}_${month}`;
+        let str;
+        if (cacheHas(user, "weight", k)) {
+          str = cacheGet(user, "weight", k);
+        } else {
+          const val = await apiCall({ action:"readOne", user, sheet:"weight", key:k, token });
+          str = typeof val === "string" ? val : JSON.stringify(val || {});
+          cacheSet(user, "weight", k, str);
+        }
+        try {
+          const obj = str ? JSON.parse(str) : {};
+          Object.assign(merged, obj);
+        } catch {}
+      }));
+      setWeightData(merged);
+      setDataLoaded(true);
+    })();
+  }, [settings && settings.lmpDate]);
+
+  if (settings === null) {
+    return (
+      <div style={{ height:"100%", background:C.bg, padding:"0 16px" }}>
+        <PregnancyHeader title="孕期體重追蹤" onBack={onBack} />
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (settings === false || !settings.lmpDate || showEdit) {
+    return (
+      <div style={{ height:"100%", overflowY:"auto", background:C.bg, padding:"0 16px 40px" }}>
+        <PregnancyHeader title="孕期體重追蹤" onBack={showEdit ? ()=>setShowEdit(false) : onBack} />
+        <PregnancySetup
+          user={user} token={token} height={height}
+          initial={settings || {}}
+          onSaved={(s)=>{ setSettings(s); setShowEdit(false); }}
+        />
+      </div>
+    );
+  }
+
+  const bmi = calcBMI(settings.prePregnancyWeight, height);
+  const cat = bmi ? pregnancyCategoryFor(bmi) : null;
+
+  const rows = [];
+  for (let m = 1; m <= PREG_MONTHS; m++) {
+    const { start, end } = pregnancyMonthRange(settings.lmpDate, m);
+    const fracMin = pregnancyCumFraction(m);
+    const targetMin = cat ? cat.min * fracMin : null;
+    const targetMax = cat ? cat.max * fracMin : null;
+    const readings = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = dateKeyP(d);
+      if (weightData[key]) readings.push(weightData[key]);
+    }
+    const avg = readings.length ? readings.reduce((a,b)=>a+b,0) / readings.length : null;
+    rows.push({ m, start, end, targetMin, targetMax, avg, count: readings.length, preWeight: settings.prePregnancyWeight });
+  }
+
+  const today = new Date();
+  const daysSinceLMP = Math.floor((today - new Date(settings.lmpDate + "T00:00:00")) / 86400000);
+  const weeksNow = Math.floor(daysSinceLMP / 7);
+
+  return (
+    <div style={{ height:"100%", overflowY:"auto", background:C.bg, padding:"0 16px 40px" }}>
+      <PregnancyHeader
+        title="孕期體重追蹤"
+        onBack={onBack}
+        right={<button onClick={()=>setShowEdit(true)} style={{ background:"none", border:"none", color:C.sub, fontSize:13, cursor:"pointer" }}>編輯</button>}
+      />
+
+      {/* 概況卡 */}
+      <div style={{ background:C.card, borderRadius:16, padding:"14px 16px", marginBottom:14, boxShadow:"0 1px 3px rgba(0,0,0,0.06)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div>
+            <div style={{ fontSize:11, color:C.sub, marginBottom:2 }}>
+              {daysSinceLMP >= 0 ? `目前約第 ${weeksNow} 週` : "尚未開始"}
+            </div>
+            {bmi && cat ? (
+              <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
+                <span style={{ fontSize:22, fontWeight:700, color:C.text, fontFamily:"'Noto Serif TC',serif" }}>BMI {bmi}</span>
+                <span style={{ fontSize:12, fontWeight:600, color:C.accent, background:C.accentLight, padding:"2px 8px", borderRadius:10 }}>{cat.label}</span>
+              </div>
+            ) : (
+              <div style={{ fontSize:13, color:C.sub }}>設定身高後可計算 BMI</div>
+            )}
+          </div>
+          {cat && (
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontSize:11, color:C.sub, marginBottom:2 }}>建議總增重</div>
+              <div style={{ fontSize:15, fontWeight:700, color:C.accent }}>{cat.min}–{cat.max} kg</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 曲線圖 */}
+      {cat && (
+        <div style={{ background:C.card, borderRadius:16, padding:"14px 16px", marginBottom:14, boxShadow:"0 1px 3px rgba(0,0,0,0.06)" }}>
+          <div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>累計增重曲線（陰影為建議區間）</div>
+          {!dataLoaded ? <Spinner /> : <PregnancyChart rows={rows} preWeight={settings.prePregnancyWeight} />}
+        </div>
+      )}
+
+      {/* 每月卡片 */}
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {rows.map(r => <PregnancyMonthCard key={r.m} row={r} />)}
+      </div>
+
+      <div style={{ fontSize:11, color:C.sub, lineHeight:1.7, marginTop:16, padding:"12px 4px" }}>
+        增重範圍依美國 IOM 標準與孕前 BMI 估算，第一孕期（1–3個月）增重較緩、第4個月起以固定速度累加，為平均估算曲線，個人差異很大。「平均體重」取自你在體重日曆中該區間內的紀錄。若增重明顯超出或低於區間，建議與產檢醫師討論。
+      </div>
+    </div>
+  );
+}
+
+
+
 // ── 體重折線圖 ──────────────────────────────────────────────
 function WeightLineChart({ data, year, month }) {
   const [open, setOpen] = React.useState(false);
@@ -177,6 +502,7 @@ function WeightApp({ user, token, saving, setSaving }) {
   const [height, setHeight] = useState(null); // 公分
   const [showHeightInput, setShowHeightInput] = useState(false);
   const [heightInput, setHeightInput] = useState("");
+  const [showPregnancy, setShowPregnancy] = useState(false);
 
   // 載入身高（initUser 已存進 cache，直接讀取不打 API）
   useEffect(()=>{
@@ -258,6 +584,15 @@ function WeightApp({ user, token, saving, setSaving }) {
   const today = new Date();
   const isCurrentMonth = year===today.getFullYear() && month===today.getMonth()+1;
 
+  if (showPregnancy) {
+    return (
+      <PregnancyView
+        user={user} token={token} height={height}
+        onBack={()=>setShowPregnancy(false)}
+      />
+    );
+  }
+
   return (
     <div style={{ height:"100%", overflowY:"auto", padding:"20px 20px 100px", background:C.bg }}>
 
@@ -314,6 +649,17 @@ function WeightApp({ user, token, saving, setSaving }) {
           </div>
         )}
       </div>
+
+      {/* 孕期體重追蹤 入口按鈕 */}
+      <button onClick={()=>setShowPregnancy(true)}
+        style={{ width:"100%", display:"flex", alignItems:"center", gap:10, background:C.card, borderRadius:16, padding:"14px 16px", marginBottom:14, boxShadow:"0 1px 3px rgba(0,0,0,0.06)", border:"none", cursor:"pointer", textAlign:"left" }}>
+        <span style={{ fontSize:22 }}>🤰</span>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:14, fontWeight:600, color:C.text }}>孕期體重追蹤</div>
+          <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>依孕前 BMI 看每月建議增重範圍</div>
+        </div>
+        <span style={{ fontSize:16, color:C.sub }}>›</span>
+      </button>
 
       {/* 統計卡 */}
       {weights.length > 0 && (
