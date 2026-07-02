@@ -119,7 +119,8 @@ function PregnancySetup({ user, token, initial, height, onSaved }) {
       <div style={{ display:"flex", flexDirection:"column", gap:14, maxWidth:320, margin:"0 auto" }}>
         <div>
           <div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>最後一次月經日（LMP）</div>
-          <input type="date" value={lmp} onChange={e=>setLmp(e.target.value)} style={{ ...inp, width:170 }} />
+          <input type="date" value={lmp} onChange={e=>setLmp(e.target.value)}
+            style={{ ...inp, WebkitAppearance:"none", appearance:"none" }} />
         </div>
         <div>
           <div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>孕前體重（kg）</div>
@@ -727,7 +728,7 @@ function WeightApp({ user, token, saving, setSaving }) {
         ) : (
           <button onClick={()=>{ localStorage.removeItem("hidePregnancyEntry_"+user); setHidePregnancyEntry(false); }}
             style={{ background:"none", border:"none", color:C.sub, fontSize:11, cursor:"pointer", padding:"4px 2px", textDecoration:"underline", textUnderlineOffset:2 }}>
-            顯示孕期追蹤
+            顯示孕期追蹤入口
           </button>
         )}
       </div>
