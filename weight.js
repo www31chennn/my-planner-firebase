@@ -119,7 +119,7 @@ function PregnancySetup({ user, token, initial, height, onSaved }) {
       <div style={{ display:"flex", flexDirection:"column", gap:14, maxWidth:320, margin:"0 auto" }}>
         <div>
           <div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>最後一次月經日（LMP）</div>
-          <input type="date" value={lmp} onChange={e=>setLmp(e.target.value)} style={inp} />
+          <input type="date" value={lmp} onChange={e=>setLmp(e.target.value)} style={{ ...inp, width:170 }} />
         </div>
         <div>
           <div style={{ fontSize:12, color:C.sub, marginBottom:6 }}>孕前體重（kg）</div>
@@ -503,6 +503,7 @@ function WeightApp({ user, token, saving, setSaving }) {
   const [showHeightInput, setShowHeightInput] = useState(false);
   const [heightInput, setHeightInput] = useState("");
   const [showPregnancy, setShowPregnancy] = useState(false);
+  const [hidePregnancyEntry, setHidePregnancyEntry] = useState(()=> localStorage.getItem("hidePregnancyEntry_"+user)==="1");
 
   // 載入身高（initUser 已存進 cache，直接讀取不打 API）
   useEffect(()=>{
@@ -650,16 +651,21 @@ function WeightApp({ user, token, saving, setSaving }) {
         )}
       </div>
 
-      {/* 孕期體重追蹤 入口按鈕 */}
-      <button onClick={()=>setShowPregnancy(true)}
-        style={{ width:"100%", display:"flex", alignItems:"center", gap:10, background:C.card, borderRadius:16, padding:"14px 16px", marginBottom:14, boxShadow:"0 1px 3px rgba(0,0,0,0.06)", border:"none", cursor:"pointer", textAlign:"left" }}>
-        <span style={{ fontSize:22 }}>🤰</span>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:14, fontWeight:600, color:C.text }}>孕期體重追蹤</div>
-          <div style={{ fontSize:11, color:C.sub, marginTop:1 }}>依孕前 BMI 看每月建議增重範圍</div>
+      {/* 孕期體重追蹤 入口（小巧、可關閉，非所有使用者都需要） */}
+      {!hidePregnancyEntry && (
+        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:14 }}>
+          <button onClick={()=>setShowPregnancy(true)}
+            style={{ display:"flex", alignItems:"center", gap:6, background:C.card, border:`1.5px solid ${C.border}`, borderRadius:999, padding:"6px 12px 6px 10px", cursor:"pointer" }}>
+            <span style={{ fontSize:14 }}>🤰</span>
+            <span style={{ fontSize:12.5, fontWeight:600, color:C.text }}>孕期追蹤</span>
+          </button>
+          <button onClick={()=>{ localStorage.setItem("hidePregnancyEntry_"+user, "1"); setHidePregnancyEntry(true); }}
+            title="隱藏此功能"
+            style={{ width:24, height:24, borderRadius:12, border:"none", background:"none", color:C.sub, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            ×
+          </button>
         </div>
-        <span style={{ fontSize:16, color:C.sub }}>›</span>
-      </button>
+      )}
 
       {/* 統計卡 */}
       {weights.length > 0 && (
