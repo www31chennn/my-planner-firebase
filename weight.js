@@ -90,8 +90,13 @@ function PregnancyHeader({ title, onBack, right }) {
   );
 }
 
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function PregnancySetup({ user, token, initial, height, onSaved }) {
-  const [lmp, setLmp] = useState(initial.lmpDate || "");
+  const [lmp, setLmp] = useState(initial.lmpDate || todayStr());
   const [preW, setPreW] = useState(initial.prePregnancyWeight ? String(initial.prePregnancyWeight) : "");
   const [saving, setSavingLocal] = useState(false);
 
