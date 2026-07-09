@@ -78,10 +78,12 @@ function monthKeysBetween(start, end) {
 function PregnancyHeader({ title, onBack, right }) {
   return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 4px 18px" }}>
-      <button onClick={onBack}
-        style={{ display:"flex", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", fontSize:14, color:C.sub, padding:"6px 4px" }}>
-        <span style={{ fontSize:18 }}>‹</span> 返回
-      </button>
+      {onBack ? (
+        <button onClick={onBack}
+          style={{ display:"flex", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", fontSize:14, color:C.sub, padding:"6px 4px" }}>
+          <span style={{ fontSize:18 }}>‹</span> 返回
+        </button>
+      ) : <div style={{ width:56 }} />}
       <div style={{ fontSize:15, fontWeight:700, color:C.text, fontFamily:"'Noto Serif TC',serif" }}>{title}</div>
       <div style={{ width:56, textAlign:"right" }}>{right}</div>
     </div>
@@ -218,12 +220,16 @@ function PregnancyMonthCard({ row }) {
   );
 }
 
-function PregnancyView({ user, token, height, saving, setSaving, onBack }) {
+function PregnancyView({ user, token, height, saving, setSaving, showPregnancy, onToggleView }) {
   const [settings, setSettings] = useState(null); // null=載入中, false=尚未設定
   const [weightData, setWeightData] = useState({});
   const [dataLoaded, setDataLoaded] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
-  const [pregTab, setPregTab] = useState("weight"); // weight | kicks
+  const [pregTab, setPregTabState] = useState(()=> localStorage.getItem("pregnancyDefaultTab_"+user)==="kicks" ? "kicks" : "weight"); // weight | kicks
+  function setPregTab(tab) {
+    setPregTabState(tab);
+    localStorage.setItem("pregnancyDefaultTab_"+user, tab);
+  }
 
   useEffect(() => {
     (async () => {
@@ -288,19 +294,21 @@ function PregnancyView({ user, token, height, saving, setSaving, onBack }) {
   if (pregTab === "kicks") {
     return (
       <div style={{ height:"100%", overflowY:"auto", background:C.bg, padding:"0 16px 40px" }}>
-        <PregnancyHeader title="孕期專區" onBack={onBack} right={headerRight} />
+        <PregnancyHeader title="孕期專區" right={headerRight} />
         {pregTabs}
         <KicksSection user={user} token={token} saving={saving} setSaving={setSaving} />
+        <WeightPregnancySwitch showPregnancy={showPregnancy} onToggle={onToggleView} />
       </div>
     );
   }
 
   if (settings === null) {
     return (
-      <div style={{ height:"100%", background:C.bg, padding:"0 16px" }}>
-        <PregnancyHeader title="孕期專區" onBack={onBack} right={headerRight} />
+      <div style={{ height:"100%", overflowY:"auto", background:C.bg, padding:"0 16px 40px" }}>
+        <PregnancyHeader title="孕期專區" right={headerRight} />
         {pregTabs}
         <Spinner />
+        <WeightPregnancySwitch showPregnancy={showPregnancy} onToggle={onToggleView} />
       </div>
     );
   }
@@ -308,13 +316,14 @@ function PregnancyView({ user, token, height, saving, setSaving, onBack }) {
   if (settings === false || !settings.lmpDate || showEdit) {
     return (
       <div style={{ height:"100%", overflowY:"auto", background:C.bg, padding:"0 16px 40px" }}>
-        <PregnancyHeader title="孕期專區" onBack={showEdit ? ()=>setShowEdit(false) : onBack} right={headerRight} />
+        <PregnancyHeader title="孕期專區" onBack={showEdit ? ()=>setShowEdit(false) : null} right={headerRight} />
         {pregTabs}
         <PregnancySetup
           user={user} token={token} height={height}
           initial={settings || {}}
           onSaved={(s)=>{ setSettings(s); setShowEdit(false); }}
         />
+        <WeightPregnancySwitch showPregnancy={showPregnancy} onToggle={onToggleView} />
       </div>
     );
   }
@@ -343,7 +352,7 @@ function PregnancyView({ user, token, height, saving, setSaving, onBack }) {
 
   return (
     <div style={{ height:"100%", overflowY:"auto", background:C.bg, padding:"0 16px 40px" }}>
-      <PregnancyHeader title="孕期專區" onBack={onBack} right={headerRight} />
+      <PregnancyHeader title="孕期專區" right={headerRight} />
       {pregTabs}
 
       {/* 概況卡 */}
@@ -387,6 +396,8 @@ function PregnancyView({ user, token, height, saving, setSaving, onBack }) {
       <div style={{ fontSize:11, color:C.sub, lineHeight:1.7, marginTop:16, padding:"12px 4px" }}>
         增重範圍依美國 IOM 標準與孕前 BMI 估算，第一孕期（1–3個月）增重較緩、第4個月起以固定速度累加，為平均估算曲線，個人差異很大。「平均體重」取自你在體重日曆中該區間內的紀錄。若增重明顯超出或低於區間，建議與產檢醫師討論。
       </div>
+
+      <WeightPregnancySwitch showPregnancy={showPregnancy} onToggle={onToggleView} />
     </div>
   );
 }
@@ -519,7 +530,22 @@ function WeightInputModal({ date, currentWeight, onSave, onDelete, onClose }) {
 }
 
 // ── Weight App ─────────────────────────────────────────────
-function WeightApp({ user, token, saving, setSaving }) {
+function WeightPregnancySwitch({ showPregnancy, onToggle }) {
+  return (
+    <div style={{ marginTop:22 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+        <span style={{ fontSize:12.5, color: !showPregnancy?C.accent:C.sub, fontWeight: !showPregnancy?600:400 }}>⚖️ 體重</span>
+        <div onClick={onToggle}
+          style={{ width:44, height:24, borderRadius:12, background: showPregnancy?C.accent:C.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+          <div style={{ position:"absolute", top:2, left: showPregnancy?22:2, width:20, height:20, borderRadius:10, background:"#fff", transition:"left 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
+        </div>
+        <span style={{ fontSize:12.5, color: showPregnancy?C.accent:C.sub, fontWeight: showPregnancy?600:400 }}>🤰 孕期專區</span>
+      </div>
+    </div>
+  );
+}
+
+function WeightApp({ user, token, saving, setSaving, onTitleChange }) {
   const thisYear = new Date().getFullYear();
   const thisMonth = new Date().getMonth() + 1;
   const [year, setYear] = useState(thisYear);
@@ -535,6 +561,10 @@ function WeightApp({ user, token, saving, setSaving }) {
   const [showHeightInput, setShowHeightInput] = useState(false);
   const [heightInput, setHeightInput] = useState("");
   const [showPregnancy, setShowPregnancy] = useState(()=> localStorage.getItem("weightDefaultView_"+user)==="pregnancy");
+
+  useEffect(() => {
+    if (onTitleChange) onTitleChange(showPregnancy ? { emoji:"🤰", label:"孕期專區" } : { emoji:"⚖️", label:"體重記錄" });
+  }, [showPregnancy]);
 
   // 載入身高（initUser 已存進 cache，直接讀取不打 API）
   useEffect(()=>{
@@ -626,7 +656,8 @@ function WeightApp({ user, token, saving, setSaving }) {
       <PregnancyView
         user={user} token={token} height={height}
         saving={saving} setSaving={setSaving}
-        onBack={()=>switchView(false)}
+        showPregnancy={showPregnancy}
+        onToggleView={()=>switchView(!showPregnancy)}
       />
     );
   }
@@ -748,15 +779,7 @@ function WeightApp({ user, token, saving, setSaving }) {
       </div>
 
       {/* 體重記錄／孕期專區 切換（會記住為下次打開的預設頁） */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginTop:22 }}>
-        <span style={{ fontSize:12.5, color: !showPregnancy?C.accent:C.sub, fontWeight: !showPregnancy?600:400 }}>⚖️ 體重</span>
-        <div onClick={()=>switchView(!showPregnancy)}
-          style={{ width:44, height:24, borderRadius:12, background: showPregnancy?C.accent:C.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
-          <div style={{ position:"absolute", top:2, left: showPregnancy?22:2, width:20, height:20, borderRadius:10, background:"#fff", transition:"left 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
-        </div>
-        <span style={{ fontSize:12.5, color: showPregnancy?C.accent:C.sub, fontWeight: showPregnancy?600:400 }}>🤰 孕期專區</span>
-      </div>
-      <div style={{ textAlign:"center", fontSize:10.5, color:C.sub, marginTop:4 }}>切換後會記住，下次打開直接顯示這一頁</div>
+      <WeightPregnancySwitch showPregnancy={showPregnancy} onToggle={()=>switchView(!showPregnancy)} />
 
       {/* 輸入 Modal */}
       {selectedDate && (

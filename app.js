@@ -411,6 +411,7 @@ function MainShell({ user, token, displayName: displayName_prop }) {
   const [partnerVersion, setPartnerVersion] = useState(0);
   const [enabledModules, setEnabledModules] = useState(["planner"]);
   const [mountVersion, setMountVersion] = useState(0); // 控制背景模組分批 mount
+  const [moduleTitleOverride, setModuleTitleOverride] = useState({}); // 讓模組可以覆寫殼層標題（例如體重記錄切到孕期專區）
   const [appLoading, setAppLoading] = useState(true);
   const [displayName, setDisplayName] = useState(displayName_prop);
   const shellTouchStart = useRef(null);
@@ -546,6 +547,8 @@ function MainShell({ user, token, displayName: displayName_prop }) {
   );
 
   const ActiveModule = MODULES.find(m => m.id === currentModule)?.component;
+  const activeMeta = MODULES.find(m => m.id === currentModule);
+  const titleOverride = moduleTitleOverride[currentModule];
 
   return (
     <div style={{ height:"100vh", display:"flex", flexDirection:"column", background:C.bg, maxWidth:430, margin:"0 auto", position:"relative", overflow:"hidden" }}
@@ -558,7 +561,7 @@ function MainShell({ user, token, displayName: displayName_prop }) {
           <div style={{ width:20, height:2, background:C.text, borderRadius:1 }} />
         </button>
         <div style={{ flex:1, fontSize:16, fontFamily:"'Noto Serif TC',serif", fontWeight:700, color:C.text }}>
-          {MODULES.find(m=>m.id===currentModule)?.emoji} {MODULES.find(m=>m.id===currentModule)?.label}
+          {titleOverride ? titleOverride.emoji : activeMeta?.emoji} {titleOverride ? titleOverride.label : activeMeta?.label}
         </div>
         <div style={{ fontSize:12, color:C.sub }}>{displayName}</div>
       </div>
@@ -578,6 +581,7 @@ function MainShell({ user, token, displayName: displayName_prop }) {
                 plannerName={plannerName}
                 onOpenSettings={()=>setShowSettings(true)}
                 partnerVersion={partnerVersion}
+                onTitleChange={(info)=>setModuleTitleOverride(prev=> (prev[m.id]&&prev[m.id].label===info?.label ? prev : {...prev, [m.id]: info}))}
               />
             </div>
           );
