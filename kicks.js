@@ -5,8 +5,6 @@
 // 文件格式： sheet="kicks", key=`${year}_${month}`,
 //           value = JSON.stringify({ "YYYY-MM-DD": [ms, ms, ...] })
 
-const { useState, useEffect, useRef } = React;
-
 const WEEKDAYS_K = ["日","一","二","三","四","五","六"];
 const padK = n => String(n).padStart(2, "0");
 

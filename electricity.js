@@ -1,8 +1,6 @@
 // ── electricity.js ──────────────────────────────────────────────
 // 電表記錄模組
 
-const { useState, useEffect, useRef } = React;
-
 const MONTHS_E = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 const DAYS_IN_MONTH_E = (m,y) => new Date(y,m,0).getDate();
 const FIRST_DAY_E = (m,y) => new Date(y,m-1,1).getDay();

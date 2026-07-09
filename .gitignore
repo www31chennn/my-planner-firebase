@@ -6,6 +6,9 @@
 # Node
 node_modules/
 
+# 建置產出物（npm run build 產生，不用進版控）
+dist/
+
 # Vercel
 .vercel
 

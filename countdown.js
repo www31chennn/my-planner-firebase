@@ -1,8 +1,6 @@
 // ── countdown.js ───────────────────────────────────────────
 // 倒數計時模組
 
-const { useState, useEffect, useRef } = React;
-
 const SHEET = "countdown";
 const KEY = "list";
 

@@ -519,12 +519,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── 靜態檔案 ───────────────────────────────────────────
+  // ── 靜態檔案（從 dist/ 讀取，跟正式環境用 build 完的檔案一致）──
   let filePath = pathname === '/' ? '/index.html' : pathname;
-  filePath = path.join(__dirname, filePath);
+  filePath = path.join(__dirname, 'dist', filePath);
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
+      if (err.code === 'ENOENT' && !fs.existsSync(path.join(__dirname, 'dist'))) {
+        res.writeHead(500);
+        res.end('找不到 dist/ 資料夾，請先執行 npm run build（或直接用 npm run dev，會自動先 build）');
+        return;
+      }
       res.writeHead(404);
       res.end(`找不到檔案：${pathname}`);
       return;

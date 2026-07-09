@@ -1,5 +1,13 @@
 // ── commons.js ────────────────────────────────────────────
 // 所有模組共用的函式、元件、快取
+//
+// 注意：useState/useEffect/useRef 統一在這裡宣告一次（這個檔案
+// 是 index.html 裡第一個載入的模組），其他檔案不要再各自宣告
+// `const { useState, ... } = React;`，直接當作已經存在的全域變數用即可。
+// 原因：build.js 會把每個檔案編譯成獨立的 <script> 檔案，瀏覽器裡
+// 多個 <script> 標籤共用同一個頂層作用域，同一個名字的 const 只能宣告一次，
+// 重複宣告會直接讓那個檔案整個噴 SyntaxError、整個 App 打不開。
+const { useState, useEffect, useRef } = React;
 
 // ── API ───────────────────────────────────────────────────
 const API = (() => {

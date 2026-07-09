@@ -1,8 +1,6 @@
 // ── planner.js ────────────────────────────────────────────
 // 計畫本模組：年度目標、月份計畫、當日記錄
 
-const { useState, useEffect, useRef } = React;
-
 const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 const DAYS_IN_MONTH = (m,y) => new Date(y,m,0).getDate();
 const FIRST_DAY = (m,y) => new Date(y,m-1,1).getDay();
