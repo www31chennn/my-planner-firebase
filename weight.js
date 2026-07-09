@@ -220,11 +220,12 @@ function PregnancyMonthCard({ row }) {
   );
 }
 
-function PregnancyView({ user, token, height, onBack }) {
+function PregnancyView({ user, token, height, saving, setSaving, onBack }) {
   const [settings, setSettings] = useState(null); // null=載入中, false=尚未設定
   const [weightData, setWeightData] = useState({});
   const [dataLoaded, setDataLoaded] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [pregTab, setPregTab] = useState("weight"); // weight | kicks
 
   useEffect(() => {
     (async () => {
@@ -268,10 +269,39 @@ function PregnancyView({ user, token, height, onBack }) {
     })();
   }, [settings && settings.lmpDate]);
 
+  const TAB_BTN = (active) => ({
+    flex:1, padding:"9px 0", borderRadius:12, border:"none", cursor:"pointer",
+    background: active ? C.accent : C.card, color: active ? "#fff" : C.sub,
+    fontSize:13.5, fontWeight:600, boxShadow: active ? "none" : "0 1px 3px rgba(0,0,0,0.06)",
+  });
+
+  const pregTabs = (
+    <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+      <button onClick={()=>setPregTab("weight")} style={TAB_BTN(pregTab==="weight")}>🤰 孕期增重</button>
+      <button onClick={()=>setPregTab("kicks")} style={TAB_BTN(pregTab==="kicks")}>💗 胎動紀錄</button>
+    </div>
+  );
+
+  const headerRight = pregTab==="weight" && settings && settings.lmpDate && !showEdit
+    ? <button onClick={()=>setShowEdit(true)} style={{ background:"none", border:"none", color:C.sub, fontSize:13, cursor:"pointer" }}>編輯</button>
+    : null;
+
+  // ── 胎動分頁：跟孕期增重設定完全獨立，不需要 LMP 也能用 ──
+  if (pregTab === "kicks") {
+    return (
+      <div style={{ height:"100%", overflowY:"auto", background:C.bg, padding:"0 16px 40px" }}>
+        <PregnancyHeader title="孕期專區" onBack={onBack} right={headerRight} />
+        {pregTabs}
+        <KicksSection user={user} token={token} saving={saving} setSaving={setSaving} />
+      </div>
+    );
+  }
+
   if (settings === null) {
     return (
       <div style={{ height:"100%", background:C.bg, padding:"0 16px" }}>
-        <PregnancyHeader title="孕期體重追蹤" onBack={onBack} />
+        <PregnancyHeader title="孕期專區" onBack={onBack} right={headerRight} />
+        {pregTabs}
         <Spinner />
       </div>
     );
@@ -280,7 +310,8 @@ function PregnancyView({ user, token, height, onBack }) {
   if (settings === false || !settings.lmpDate || showEdit) {
     return (
       <div style={{ height:"100%", overflowY:"auto", background:C.bg, padding:"0 16px 40px" }}>
-        <PregnancyHeader title="孕期體重追蹤" onBack={showEdit ? ()=>setShowEdit(false) : onBack} />
+        <PregnancyHeader title="孕期專區" onBack={showEdit ? ()=>setShowEdit(false) : onBack} right={headerRight} />
+        {pregTabs}
         <PregnancySetup
           user={user} token={token} height={height}
           initial={settings || {}}
@@ -314,11 +345,8 @@ function PregnancyView({ user, token, height, onBack }) {
 
   return (
     <div style={{ height:"100%", overflowY:"auto", background:C.bg, padding:"0 16px 40px" }}>
-      <PregnancyHeader
-        title="孕期體重追蹤"
-        onBack={onBack}
-        right={<button onClick={()=>setShowEdit(true)} style={{ background:"none", border:"none", color:C.sub, fontSize:13, cursor:"pointer" }}>編輯</button>}
-      />
+      <PregnancyHeader title="孕期專區" onBack={onBack} right={headerRight} />
+      {pregTabs}
 
       {/* 概況卡 */}
       <div style={{ background:C.card, borderRadius:16, padding:"14px 16px", marginBottom:14, boxShadow:"0 1px 3px rgba(0,0,0,0.06)" }}>
@@ -508,8 +536,7 @@ function WeightApp({ user, token, saving, setSaving }) {
   const [height, setHeight] = useState(null); // 公分
   const [showHeightInput, setShowHeightInput] = useState(false);
   const [heightInput, setHeightInput] = useState("");
-  const [showPregnancy, setShowPregnancy] = useState(false);
-  const [hidePregnancyEntry, setHidePregnancyEntry] = useState(()=> localStorage.getItem("hidePregnancyEntry_"+user)==="1");
+  const [showPregnancy, setShowPregnancy] = useState(()=> localStorage.getItem("weightDefaultView_"+user)==="pregnancy");
 
   // 載入身高（initUser 已存進 cache，直接讀取不打 API）
   useEffect(()=>{
@@ -591,11 +618,17 @@ function WeightApp({ user, token, saving, setSaving }) {
   const today = new Date();
   const isCurrentMonth = year===today.getFullYear() && month===today.getMonth()+1;
 
+  function switchView(toPregnancy) {
+    setShowPregnancy(toPregnancy);
+    localStorage.setItem("weightDefaultView_"+user, toPregnancy ? "pregnancy" : "weight");
+  }
+
   if (showPregnancy) {
     return (
       <PregnancyView
         user={user} token={token} height={height}
-        onBack={()=>setShowPregnancy(false)}
+        saving={saving} setSaving={setSaving}
+        onBack={()=>switchView(false)}
       />
     );
   }
@@ -716,27 +749,16 @@ function WeightApp({ user, token, saving, setSaving }) {
         )}
       </div>
 
-      {/* 孕期體重追蹤 入口（放在頁尾、低調，非所有使用者都需要） */}
-      <div style={{ textAlign:"center", marginTop:18 }}>
-        {!hidePregnancyEntry ? (
-          <div style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
-            <button onClick={()=>setShowPregnancy(true)}
-              style={{ background:"none", border:"none", color:C.sub, fontSize:11.5, cursor:"pointer", padding:"4px 2px", textDecoration:"underline", textUnderlineOffset:2 }}>
-              🤰 孕期追蹤
-            </button>
-            <button onClick={()=>{ localStorage.setItem("hidePregnancyEntry_"+user, "1"); setHidePregnancyEntry(true); }}
-              title="隱藏此功能"
-              style={{ width:18, height:18, borderRadius:9, border:"none", background:"none", color:C.sub, fontSize:12, cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center" }}>
-              ×
-            </button>
-          </div>
-        ) : (
-          <button onClick={()=>{ localStorage.removeItem("hidePregnancyEntry_"+user); setHidePregnancyEntry(false); }}
-            style={{ background:"none", border:"none", color:C.sub, fontSize:11, cursor:"pointer", padding:"4px 2px", textDecoration:"underline", textUnderlineOffset:2 }}>
-            顯示孕期追蹤入口
-          </button>
-        )}
+      {/* 體重記錄／孕期專區 切換（會記住為下次打開的預設頁） */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginTop:22 }}>
+        <span style={{ fontSize:12.5, color: !showPregnancy?C.accent:C.sub, fontWeight: !showPregnancy?600:400 }}>⚖️ 體重</span>
+        <div onClick={()=>switchView(!showPregnancy)}
+          style={{ width:44, height:24, borderRadius:12, background: showPregnancy?C.accent:C.border, cursor:"pointer", position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+          <div style={{ position:"absolute", top:2, left: showPregnancy?22:2, width:20, height:20, borderRadius:10, background:"#fff", transition:"left 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
+        </div>
+        <span style={{ fontSize:12.5, color: showPregnancy?C.accent:C.sub, fontWeight: showPregnancy?600:400 }}>🤰 孕期專區</span>
       </div>
+      <div style={{ textAlign:"center", fontSize:10.5, color:C.sub, marginTop:4 }}>切換後會記住，下次打開直接顯示這一頁</div>
 
       {/* 輸入 Modal */}
       {selectedDate && (
