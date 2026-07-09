@@ -507,14 +507,21 @@ function KicksSection({ user, token, saving, setSaving }) {
         <div style={{ marginTop:24 }}>
           <div style={{ fontSize:12.5, fontWeight:700, color:C.accent, letterSpacing:1, marginBottom:8 }}>匯出</div>
           <div style={{ ...card, display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-            <button onClick={()=>exportMonthReportK(user, token, SHEET, anchorDate, showToast)}
+            <button onClick={()=>exportMonthImageK(user, token, SHEET, anchorDate, showToast)}
+              style={{ background:C.card, border:`1.5px solid ${C.accent}`, color:C.accent, borderRadius:20, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+              🖼 匯出摘要圖片（簡易版）
+            </button>
+            <button onClick={()=>exportMonthReportImageK(user, token, SHEET, anchorDate, showToast)}
               style={{ background:C.accent, color:"#fff", border:"none", borderRadius:20, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
-              📄 匯出本月報表（含圖表）
+              📄 匯出本月報表圖片（含明細）
             </button>
             <button onClick={()=>exportAllCsvK(user, SHEET, token, showToast)}
               style={{ background:C.card, border:`1px solid ${C.border}`, color:C.sub, borderRadius:20, padding:"7px 16px", fontSize:12.5, cursor:"pointer" }}>
               ⬇ 匯出全部原始資料（CSV）
             </button>
+          </div>
+          <div style={{ fontSize:10.5, color:C.sub, textAlign:"center", marginTop:6 }}>
+            圖片匯出需要連上網路（要載入截圖用的小套件）
           </div>
         </div>
 
@@ -557,11 +564,21 @@ async function exportAllCsvK(user, sheet, token, showToast) {
   showToast(`已匯出 ${rows.length-1} 筆紀錄`);
 }
 
-// ── 匯出：本月報表（含圖表，獨立 HTML 檔）──────────────────
-async function exportMonthReportK(user, token, sheet, anchorDate, showToast) {
+// ── 匯出：本月摘要圖片（PNG，直接用 Canvas 畫，不需要任何外部套件）──
+function roundedRectK(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+async function exportMonthImageK(user, token, sheet, anchorDate, showToast) {
   const { y, m } = ymOf(anchorDate);
-  showToast("產生報表中…");
-  const monthData = await fetchMonthDataK(user, token, sheet, y, m); // 直接向該月完整資料，不受目前畫面瀏覽範圍影響
+  showToast("產生圖片中…");
+  const monthData = await fetchMonthDataK(user, token, sheet, y, m);
   const dates = getPeriodDatesK("month", anchorDate);
   const hasAny = dates.some(dk => (monthData[dk]||[]).length>0);
   if (!hasAny) { showToast("這個月還沒有任何紀錄"); return; }
@@ -569,12 +586,199 @@ async function exportMonthReportK(user, token, sheet, anchorDate, showToast) {
   const stats = getPeriodStatsK(monthData, dates);
   const daily = getDailyTotalsK(monthData, dates, toDateKeyK(new Date()));
   const maxVal = Math.max(1, ...daily.map(d=>d.count));
+  const hourlyData = getHourlyAggregateK(monthData, dates);
+  const maxHour = Math.max(1, ...hourlyData.map(b=>b.count));
+  const activeDaysCount = daily.filter(d=>d.count>0).length;
+
+  const FONT = "-apple-system, BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif";
+  const W = 720, padX = 32;
+  const statsTop = 96, statsH = 74;
+  const chartTitleTop = statsTop + statsH + 34;
+  const chartTop = chartTitleTop + 34; // 多留空間給長條上的日期/次數標籤
+  const chartH = 220;
+  const timeTitleTop = chartTop + chartH + 40;
+  const timeTop = timeTitleTop + 14;
+  const timeH = 90;
+  const H = timeTop + timeH + 56;
+
+  const canvas = document.createElement("canvas");
+  const scale = 2; // 輸出 2 倍解析度，存下來、放大看都清楚
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  canvas.style.width = W + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+
+  // 背景
+  ctx.fillStyle = "#F7F5F2";
+  ctx.fillRect(0, 0, W, H);
+
+  // 標題
+  ctx.fillStyle = "#1A1A1A";
+  ctx.font = `700 26px ${FONT}`;
+  ctx.textAlign = "left";
+  ctx.fillText(`💗 胎動月報表　${y}年${m}月`, padX, 46);
+
+  const now = new Date();
+  ctx.fillStyle = "#9A9A9A";
+  ctx.font = `13px ${FONT}`;
+  ctx.fillText(`產生時間：${now.getFullYear()}/${padK(now.getMonth()+1)}/${padK(now.getDate())} ${padK(now.getHours())}:${padK(now.getMinutes())}`, padX, 68);
+
+  // 統計卡片 x3
+  const gap = 14;
+  const statW = (W - padX*2 - gap*2) / 3;
+  const statItems = [
+    { label:"本月總次數", value:`${stats.total}` },
+    { label:"每日平均",   value:`${stats.avgAll}` },
+    { label:"有紀錄天數", value:`${stats.daysRecorded} / ${stats.totalDays}` },
+  ];
+  statItems.forEach((s, i) => {
+    const x = padX + i*(statW+gap);
+    ctx.fillStyle = "#FFFFFF";
+    roundedRectK(ctx, x, statsTop, statW, statsH, 12);
+    ctx.fill();
+    ctx.fillStyle = "#4A7C59";
+    ctx.font = `700 22px ${FONT}`;
+    ctx.textAlign = "center";
+    ctx.fillText(s.value, x + statW/2, statsTop + 38);
+    ctx.fillStyle = "#9A9A9A";
+    ctx.font = `11px ${FONT}`;
+    ctx.fillText(s.label, x + statW/2, statsTop + 58);
+  });
+  ctx.textAlign = "left";
+
+  // 每日次數長條圖
+  ctx.fillStyle = "#1A1A1A";
+  ctx.font = `700 13px ${FONT}`;
+  ctx.fillText("每日次數分布", padX, chartTitleTop);
+
+  ctx.fillStyle = "#FFFFFF";
+  roundedRectK(ctx, padX, chartTop, W - padX*2, chartH, 12);
+  ctx.fill();
+
+  const innerPad = 14;
+  const barAreaW = W - padX*2 - innerPad*2;
+  const barGap = 3;
+  const barW = Math.max(2, (barAreaW - (daily.length-1)*barGap) / daily.length);
+  const trackH = chartH - 46;
+  const baseline = chartTop + chartH - 22;
+
+  daily.forEach((d, i) => {
+    const x = padX + innerPad + i*(barW+barGap);
+    const h = d.count>0 ? Math.max(3, (d.count/maxVal)*trackH) : 1;
+    ctx.fillStyle = d.count>0 ? (d.isToday ? "#C97B84" : "#4A7C59") : "#EBEBEB";
+    ctx.fillRect(x, baseline - h, barW, h);
+  });
+
+  // 資料不多時（≤10 天有紀錄），直接把日期／次數標在長條上面，
+  // 資料多時改標頭尾跟中間，避免文字擠成一團
+  ctx.textAlign = "center";
+  if (activeDaysCount > 0 && activeDaysCount <= 10) {
+    ctx.fillStyle = "#C97B84";
+    ctx.font = `700 11px ${FONT}`;
+    daily.forEach((d, i) => {
+      if (d.count === 0) return;
+      const x = padX + innerPad + i*(barW+barGap) + barW/2;
+      const h = Math.max(3, (d.count/maxVal)*trackH);
+      ctx.fillText(`${d.label}・${d.count}次`, x, baseline - h - 8);
+    });
+  }
+  ctx.fillStyle = "#9A9A9A";
+  ctx.font = `10px ${FONT}`;
+  const tickIdxs = [0, Math.floor((daily.length-1)/2), daily.length-1];
+  [...new Set(tickIdxs)].forEach(idx => {
+    const x = padX + innerPad + idx*(barW+barGap) + barW/2;
+    ctx.fillText(daily[idx].label, x, baseline + 16);
+  });
+  ctx.textAlign = "left";
+
+  // 本月時段分布（一天中哪個時段比較常發生，整月加總）
+  ctx.fillStyle = "#1A1A1A";
+  ctx.font = `700 13px ${FONT}`;
+  ctx.fillText("本月時段分布（整月加總）", padX, timeTitleTop);
+
+  ctx.fillStyle = "#FFFFFF";
+  roundedRectK(ctx, padX, timeTop, W - padX*2, timeH, 12);
+  ctx.fill();
+
+  const timeInnerPad = 20;
+  const dotAreaW = W - padX*2 - timeInnerPad*2;
+  const dotGap = (dotAreaW - 24*10) / 23; // 每個時段一個點，點直徑最大 10px
+  const dotBaseline = timeTop + timeH - 30;
+  ctx.textAlign = "center";
+  hourlyData.forEach((b, h) => {
+    const cx = padX + timeInnerPad + 5 + h*(10+dotGap);
+    let color = "#EBEBEB", r = 2.5;
+    if (b.count > 0) {
+      r = 5;
+      const ratio = maxHour>1 ? b.count/maxHour : 1;
+      const cr = Math.round(234 - (234-74)*ratio), cg = Math.round(242 - (242-124)*ratio), cb = Math.round(236 - (236-89)*ratio);
+      color = `rgb(${cr},${cg},${cb})`;
+    }
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx, dotBaseline, r, 0, Math.PI*2);
+    ctx.fill();
+    if (h % 6 === 0) {
+      ctx.fillStyle = "#9A9A9A";
+      ctx.font = `9px ${FONT}`;
+      ctx.fillText(`${h}時`, cx, dotBaseline + 22);
+    }
+  });
+  ctx.textAlign = "left";
+
+  // Footer 提醒
+  ctx.fillStyle = "#9A9A9A";
+  ctx.font = `11px ${FONT}`;
+  ctx.fillText("僅供個人紀錄參考，如感覺胎動明顯異常請直接聯繫產檢醫師。", padX, H - 20);
+
+  canvas.toBlob(blob => {
+    if (!blob) { showToast("圖片產生失敗，請再試一次"); return; }
+    downloadBlobK(blob, `胎動月報表_${y}-${padK(m)}.png`);
+    showToast("已匯出圖片");
+  }, "image/png");
+}
+
+// ── 匯出：本月報表（含圖表，獨立 HTML 檔）──────────────────
+function loadHtml2CanvasK() {
+  if (window.html2canvas) return Promise.resolve();
+  if (window._html2canvasLoading) return window._html2canvasLoading;
+  window._html2canvasLoading = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("html2canvas 載入失敗"));
+    document.head.appendChild(script);
+  });
+  return window._html2canvasLoading;
+}
+
+// ── 匯出：本月報表圖片（含每日明細，排版跟原本的 HTML 報表一樣，
+//    但直接在畫面上組出來截圖，不用再另外開一個 HTML 檔案）──
+async function exportMonthReportImageK(user, token, sheet, anchorDate, showToast) {
+  const { y, m } = ymOf(anchorDate);
+  showToast("產生圖片中…");
+  const monthData = await fetchMonthDataK(user, token, sheet, y, m);
+  const dates = getPeriodDatesK("month", anchorDate);
+  const hasAny = dates.some(dk => (monthData[dk]||[]).length>0);
+  if (!hasAny) { showToast("這個月還沒有任何紀錄"); return; }
+
+  try {
+    await loadHtml2CanvasK();
+  } catch (e) {
+    showToast("圖片產生失敗，請確認網路連線後再試一次");
+    return;
+  }
+
+  const stats = getPeriodStatsK(monthData, dates);
+  const daily = getDailyTotalsK(monthData, dates, toDateKeyK(new Date()));
+  const maxVal = Math.max(1, ...daily.map(d=>d.count));
 
   const barsHtml = daily.map(d => {
     const h = d.count>0 ? Math.max(6, (d.count/maxVal)*140) : 2;
-    return `<div class="bar-col"><div class="bar-count">${d.count>0?d.count:""}</div>` +
-      `<div class="bar-track"><div class="bar-fill${d.count>0?" active":""}" style="height:${h}px;"></div></div>` +
-      `<div class="bar-tick">${d.label}</div></div>`;
+    return `<div class="kr-bar-col"><div class="kr-bar-count">${d.count>0?d.count:""}</div>` +
+      `<div class="kr-bar-track"><div class="kr-bar-fill${d.count>0?" active":""}" style="height:${h}px;"></div></div>` +
+      `<div class="kr-bar-tick">${d.label}</div></div>`;
   }).join("");
 
   const tableRows = dates.map(dk => {
@@ -582,48 +786,65 @@ async function exportMonthReportK(user, token, sheet, anchorDate, showToast) {
     const wd = WEEKDAYS_K[new Date(y,mm-1,dd).getDay()];
     const list = (monthData[dk]||[]).slice().sort((a,b)=>a-b);
     const times = list.map(ts=>formatTimeK(ts)).join("、");
-    return `<tr><td>${mm}/${dd}</td><td>週${wd}</td><td style="text-align:center;">${list.length}</td><td class="times">${times||"—"}</td></tr>`;
+    return `<tr><td>${mm}/${dd}</td><td>週${wd}</td><td style="text-align:center;">${list.length}</td><td class="kr-times">${times||"—"}</td></tr>`;
   }).join("");
 
   const now = new Date();
   const generatedLabel = `${now.getFullYear()}/${padK(now.getMonth()+1)}/${padK(now.getDate())} ${padK(now.getHours())}:${padK(now.getMinutes())}`;
 
-  const html = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8">` +
-    `<title>胎動月報表 ${y}-${padK(m)}</title><style>` +
-    `body{font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC",sans-serif;background:#F7F5F2;color:#1A1A1A;margin:0;padding:28px 16px 48px;}` +
-    `.wrap{max-width:640px;margin:0 auto;}h1{font-size:20px;margin:0 0 4px;}` +
-    `.meta{font-size:12.5px;color:#9A9A9A;margin-bottom:20px;}` +
-    `.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;}` +
-    `.stat{background:#FFF;border:1px solid #EBEBEB;border-radius:14px;padding:12px 8px;text-align:center;}` +
-    `.stat b{display:block;font-size:16px;}.stat span{font-size:11px;color:#9A9A9A;}` +
-    `.card{background:#FFF;border:1px solid #EBEBEB;border-radius:16px;padding:14px 12px 6px;margin-bottom:20px;overflow-x:auto;}` +
-    `.section-title{font-size:12.5px;font-weight:700;color:#4A7C59;letter-spacing:1px;margin-bottom:8px;}` +
-    `.bar-chart{display:flex;align-items:flex-end;gap:3px;padding-top:8px;min-width:${dates.length*16}px;}` +
-    `.bar-col{flex:1;min-width:13px;display:flex;flex-direction:column;align-items:center;}` +
-    `.bar-count{font-size:8.5px;color:#9A9A9A;margin-bottom:2px;min-height:10px;}` +
-    `.bar-track{height:140px;width:100%;display:flex;align-items:flex-end;justify-content:center;}` +
-    `.bar-fill{width:100%;max-width:20px;border-radius:4px 4px 0 0;background:#EBEBEB;}` +
-    `.bar-fill.active{background:#4A7C59;}` +
-    `.bar-tick{font-size:8.5px;color:#9A9A9A;margin-top:6px;white-space:nowrap;}` +
-    `table{width:100%;border-collapse:collapse;font-size:12.5px;}` +
-    `th,td{padding:7px 8px;text-align:left;border-top:1px solid #EBEBEB;}` +
-    `th{color:#4A7C59;font-size:11px;font-weight:700;}td.times{color:#7a7a7a;}` +
-    `.print-btn{display:inline-block;margin-bottom:16px;background:#4A7C59;color:#fff;border:none;border-radius:20px;padding:8px 18px;font-size:13px;cursor:pointer;}` +
-    `@media print{.print-btn{display:none;}}</style></head><body><div class="wrap">` +
-    `<button class="print-btn" onclick="window.print()">🖨 列印 / 儲存為 PDF</button>` +
-    `<h1>胎動月報表 － ${y}年${m}月</h1><div class="meta">產生時間：${generatedLabel}</div>` +
-    `<div class="stats">` +
-      `<div class="stat"><b>${stats.total}</b><span>本月總次數</span></div>` +
-      `<div class="stat"><b>${stats.avgAll}</b><span>每日平均（全月）</span></div>` +
-      `<div class="stat"><b>${stats.daysRecorded} / ${stats.totalDays}</b><span>有紀錄天數</span></div>` +
-    `</div>` +
-    `<div class="section-title">每日次數分布</div><div class="card"><div class="bar-chart">${barsHtml}</div></div>` +
-    `<div class="section-title">每日明細</div><div class="card" style="padding:0;">` +
-    `<table><thead><tr><th>日期</th><th>星期</th><th>次數</th><th>紀錄時間</th></tr></thead><tbody>${tableRows}</tbody></table></div>` +
-    `</div></body></html>`;
+  // 隱藏容器：內容跟排版完全比照原本的 HTML 報表，只是直接畫在畫面上（畫面外）用來截圖
+  const holder = document.createElement("div");
+  holder.style.position = "fixed";
+  holder.style.left = "-9999px";
+  holder.style.top = "0";
+  holder.style.width = "640px";
+  holder.innerHTML =
+    `<style>` +
+      `.kr-report{font-family:-apple-system,BlinkMacSystemFont,'PingFang TC','Noto Sans TC',sans-serif;background:#F7F5F2;color:#1A1A1A;padding:28px 16px;box-sizing:border-box;}` +
+      `.kr-report h1{font-size:20px;margin:0 0 4px;}` +
+      `.kr-meta{font-size:12.5px;color:#9A9A9A;margin-bottom:20px;}` +
+      `.kr-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;}` +
+      `.kr-stat{background:#FFF;border:1px solid #EBEBEB;border-radius:14px;padding:12px 8px;text-align:center;}` +
+      `.kr-stat b{display:block;font-size:16px;}.kr-stat span{font-size:11px;color:#9A9A9A;}` +
+      `.kr-card{background:#FFF;border:1px solid #EBEBEB;border-radius:16px;padding:14px 12px 6px;margin-bottom:20px;}` +
+      `.kr-section-title{font-size:12.5px;font-weight:700;color:#4A7C59;letter-spacing:1px;margin-bottom:8px;}` +
+      `.kr-bar-chart{display:flex;align-items:flex-end;gap:3px;padding-top:8px;min-width:${dates.length*16}px;}` +
+      `.kr-bar-col{flex:1;min-width:13px;display:flex;flex-direction:column;align-items:center;}` +
+      `.kr-bar-count{font-size:8.5px;color:#9A9A9A;margin-bottom:2px;min-height:10px;}` +
+      `.kr-bar-track{height:140px;width:100%;display:flex;align-items:flex-end;justify-content:center;}` +
+      `.kr-bar-fill{width:100%;max-width:20px;border-radius:4px 4px 0 0;background:#EBEBEB;}` +
+      `.kr-bar-fill.active{background:#4A7C59;}` +
+      `.kr-bar-tick{font-size:8.5px;color:#9A9A9A;margin-top:6px;white-space:nowrap;}` +
+      `.kr-report table{width:100%;border-collapse:collapse;font-size:12.5px;}` +
+      `.kr-report th,.kr-report td{padding:7px 8px;text-align:left;border-top:1px solid #EBEBEB;}` +
+      `.kr-report th{color:#4A7C59;font-size:11px;font-weight:700;}.kr-times{color:#7a7a7a;}` +
+    `</style>` +
+    `<div class="kr-report">` +
+      `<h1>胎動月報表 － ${y}年${m}月</h1><div class="kr-meta">產生時間：${generatedLabel}</div>` +
+      `<div class="kr-stats">` +
+        `<div class="kr-stat"><b>${stats.total}</b><span>本月總次數</span></div>` +
+        `<div class="kr-stat"><b>${stats.avgAll}</b><span>每日平均（全月）</span></div>` +
+        `<div class="kr-stat"><b>${stats.daysRecorded} / ${stats.totalDays}</b><span>有紀錄天數</span></div>` +
+      `</div>` +
+      `<div class="kr-section-title">每日次數分布</div><div class="kr-card"><div class="kr-bar-chart">${barsHtml}</div></div>` +
+      `<div class="kr-section-title">每日明細</div><div class="kr-card" style="padding:0;">` +
+      `<table><thead><tr><th>日期</th><th>星期</th><th>次數</th><th>紀錄時間</th></tr></thead><tbody>${tableRows}</tbody></table></div>` +
+    `</div>`;
 
-  downloadBlobK(new Blob(["\uFEFF"+html], {type:"text/html;charset=utf-8;"}), `胎動月報表_${y}-${padK(m)}.html`);
-  showToast(`已匯出 ${y}年${m}月 報表`);
+  document.body.appendChild(holder);
+
+  try {
+    const canvas = await window.html2canvas(holder, { backgroundColor: "#F7F5F2", scale: 2 });
+    canvas.toBlob(blob => {
+      document.body.removeChild(holder);
+      if (!blob) { showToast("圖片產生失敗，請再試一次"); return; }
+      downloadBlobK(blob, `胎動月報表_${y}-${padK(m)}.png`);
+      showToast(`已匯出 ${y}年${m}月 報表圖片`);
+    });
+  } catch (e) {
+    document.body.removeChild(holder);
+    showToast("圖片產生失敗，請確認網路連線後再試一次");
+  }
 }
 
 function downloadBlobK(blob, filename) {
